@@ -1,0 +1,35 @@
+{
+    "review24hReport": {
+        "_all": {
+            "analyzer": "ik_max_word",
+            "search_analyzer": "ik_max_word",
+            "store": "false",
+            "term_vector": "no"
+        },
+        "properties": {
+            "id": {
+                "type": "integer"
+            },
+            "reportDate": {
+                "type": "date"
+            },
+            "imageUrl": {
+                "type": "keyword"
+            },
+            "articleids": {
+                "type": "text",
+                "analyzer": "my_analyzer"
+            },
+            "createUserId": {
+                "type": "integer"
+            },
+            "createUserName": {
+                "type": "text",
+                "analyzer": "my_analyzer"
+            },
+            "status": {
+                "type": "integer"
+            }
+        }
+    }
+}

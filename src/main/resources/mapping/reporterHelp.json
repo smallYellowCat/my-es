@@ -1,0 +1,64 @@
+{
+    "reporterHelp": {
+        "_all": {
+            "analyzer": "ik_max_word",
+            "search_analyzer": "ik_max_word",
+            "store": "false",
+            "term_vector": "no"
+        },
+        "properties": {
+            "id": {
+                "type": "integer"
+            },
+            "title": {
+                "analyzer": "ik_max_word",
+                "search_analyzer": "ik_max_word",
+                "type": "text"
+            },
+            "userId": {
+                "type": "integer"
+            },
+            "userNickname": {
+                "type": "text"
+            },
+            "createTime": {
+                "format": "yyyy-MM-dd HH:mm:ss",
+                "type": "date"
+            },
+            "content": {
+                "analyzer": "ik_max_word",
+                "search_analyzer": "ik_max_word",
+                "type": "text"
+            },
+            "type": {
+                "analyzer": "ik_max_word",
+                "search_analyzer": "ik_max_word",
+                "type": "text"
+            },
+            "imageUrl": {
+                "type": "keyword"
+            },
+            "status": {
+                "type": "integer"
+            },
+            "updateTime": {
+                "format": "yyyy-MM-dd HH:mm:ss",
+                "type": "date"
+            },
+            "finishTime": {
+                "format": "yyyy-MM-dd HH:mm:ss",
+                "type": "date"
+            },
+            "reporterName": {
+                "type": "text"
+            },
+            "reporterId": {
+                "type": "integer"
+            },
+            "receiveTime": {
+                "format": "yyyy-MM-dd HH:mm:ss",
+                "type": "date"
+            }
+        }
+    }
+}

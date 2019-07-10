@@ -1,0 +1,78 @@
+{
+    "comments": {
+        "_all": {
+            "analyzer": "ik_max_word",
+            "search_analyzer": "ik_max_word",
+            "store": "false",
+            "term_vector": "no"
+        },
+        "properties": {
+            "channelName": {
+                "fields": {
+                    "keyword": {
+                        "type": "keyword"
+                    }
+                },
+                "type": "text"
+            },
+            "checkStatus": {
+                "type": "integer"
+            },
+            "columnName": {
+                "fields": {
+                    "keyword": {
+                        "type": "keyword"
+                    }
+                },
+                "type": "text"
+            },
+            "commentUserId": {
+                "type": "integer"
+            },
+            "commentUserName": {
+                "fields": {
+                    "keyword": {
+                        "type": "keyword"
+                    }
+                },
+                "type": "text"
+            },
+            "commentUserNickname": {
+                "fields": {
+                    "keyword": {
+                        "type": "keyword"
+                    }
+                },
+                "type": "text"
+            },
+            "content": {
+                "analyzer": "ik_max_word",
+                "search_analyzer": "ik_max_word",
+                "type": "text"
+            },
+            "id": {
+                "type": "integer"
+            },
+            "listTitle": {
+                "analyzer": "ik_max_word",
+                "search_analyzer": "ik_max_word",
+                "type": "text"
+            },
+            "publishTime": {
+                "format": "yyyy-MM-dd HH:mm:ss",
+                "type": "date"
+            },
+            "sourceId": {
+                "type": "integer"
+            },
+            "title": {
+                "analyzer": "ik_max_word",
+                "search_analyzer": "ik_max_word",
+                "type": "text"
+            },
+            "type": {
+                "type": "integer"
+            }
+        }
+    }
+}

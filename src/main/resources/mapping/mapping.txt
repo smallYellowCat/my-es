@@ -1,0 +1,20 @@
+{
+    "settings": {
+        "analysis": {
+            "analyzer": {
+                "my_analyzer": {
+                    "tokenizer": "my_tokenizer"
+                }
+            },
+            "tokenizer": {
+                "my_tokenizer": {
+                    "type": "standard",
+                    "max_token_length": 1
+                }
+            }
+        }
+    },
+    "mappings": {
+        
+    }
+}

@@ -1,0 +1,78 @@
+{
+    "userInfo": {
+        "_all": {
+            "analyzer": "ik_max_word",
+            "search_analyzer": "ik_max_word",
+            "store": "false",
+            "term_vector": "no"
+        },
+        "properties": {
+            "id": {
+                "type": "integer"
+            },
+            "phoneNo": {
+            	"type": "text"
+            },
+            "nickName": {
+                "type": "text"
+            },
+            "userName": {
+                "type": "keyword"
+            },
+            "iconUrl": {
+            	"type": "keyword"
+            },
+            "keepNum": {
+            	"type": "integer"
+            },
+            "points": {
+            	"type": "double"
+            },
+            "balancePoints": {
+            	"type": "double"
+            },
+            "homePage": {
+            	"type": "integer"
+            },
+            "invitationCode": {
+            	"type": "keyword"
+            },
+            "registerTime": {
+            	"format": "yyyy-MM-dd HH:mm:ss",
+                "type": "date"
+            },
+            "bindPhoneTime": {
+            	"format": "yyyy-MM-dd HH:mm:ss",
+                "type": "date"
+            },
+            "lastLoginTime": {
+            	"format": "yyyy-MM-dd HH:mm:ss",
+                "type": "date"
+            },
+            "silenced": {
+            	"type": "integer"
+            },
+            "freezed": {
+            	"type": "integer"
+            },
+            "status": {
+            	"type": "integer"
+            },
+            "beinvitedcode": {
+            	"type": "keyword"
+            },
+            "favorite": {
+            	"type": "text"
+            },
+            "clientId": {
+            	"type": "keyword"
+            },
+            "isRegister": {
+            	"type": "integer"
+            },
+            "lastDevice": {
+            	"type": "keyword"
+            }
+        }
+    }
+}

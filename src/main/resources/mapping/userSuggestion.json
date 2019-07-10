@@ -1,0 +1,34 @@
+{
+    "userSuggestion": {
+        "_all": {
+            "analyzer": "ik_max_word",
+            "search_analyzer": "ik_max_word",
+            "store": "false",
+            "term_vector": "no"
+        },
+        "properties": {
+            "id": {
+                "type": "integer"
+            },
+            "content": {
+                "analyzer": "ik_max_word",
+                "search_analyzer": "ik_max_word",
+                "type": "text"
+            },
+            "createUserId": {
+                "type": "integer"
+            },
+            "createUserName": {
+                "type": "text"
+            },
+            "createTime": {
+                "format": "yyyy-MM-dd HH:mm:ss",
+                "type": "date"
+            },
+            "phoneEmail": {
+                "type": "text",
+                "analyzer": "my_analyzer"
+            }
+        }
+    }
+}

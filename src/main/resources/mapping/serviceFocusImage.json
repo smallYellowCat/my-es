@@ -1,0 +1,42 @@
+{
+    "serviceFocusImage": {
+        "_all": {
+            "analyzer": "ik_max_word",
+            "search_analyzer": "ik_max_word",
+            "store": "false",
+            "term_vector": "no"
+        },
+        "properties": {
+            "id": {
+                "type": "integer"
+            },
+            "title": {
+                "analyzer": "ik_max_word",
+                "search_analyzer": "ik_max_word",
+                "type": "text"
+            },
+            "url": {
+                "type": "keyword"
+            },
+            "imageUrl": {
+                "type": "keyword"
+            },
+            "status": {
+                "type": "integer"
+            },
+            "editingUserTruename": {
+                "type": "text"
+            },
+            "defaultSortNum": {
+                "type": "long"
+            },
+            "articleId": {
+                "type": "integer"
+            },
+            "createTime": {
+                "format": "yyyy-MM-dd HH:mm:ss",
+                "type": "date"
+            }
+        }
+    }
+}

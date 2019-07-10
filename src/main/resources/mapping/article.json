@@ -1,0 +1,175 @@
+{
+    "article": {
+        "_all": {
+            "analyzer": "ik_max_word",
+            "search_analyzer": "ik_max_word",
+            "store": "false",
+            "term_vector": "no"
+        },
+        "properties": {
+            "id": {
+                "type": "integer"
+            },
+            "synMetadataid": {
+                "type": "integer"
+            },
+            "docType": {
+                "type": "integer"
+            },
+            "columnName": {
+                "fields": {
+                    "keyword": {
+                        "type": "keyword"
+                    }
+                },
+                "type": "text"
+            },
+            "channelName": {
+                "fields": {
+                    "keyword": {
+                        "type": "keyword"
+                    }
+                },
+                "type": "text"
+            },
+            "columnId": {
+                "type": "integer"
+            },
+            "channelId": {
+                "type": "integer"
+            },
+            "tag": {
+                "type": "keyword"
+            },
+            "isHide": {
+                "type": "boolean"
+            },
+            "abandoned": {
+                "type": "boolean"
+            },
+            "isOriginal": {
+                "type": "boolean"
+            },
+            "fgdAuthorId": {
+                "fields": {
+                    "keyword": {
+                        "type": "keyword"
+                    }
+                },
+                "type": "text"
+            },
+            "fgdAuthorName": {
+                "fields": {
+                    "keyword": {
+                        "type": "keyword"
+                    }
+                },
+                "type": "text"
+            },
+            "publishDate": {
+                "format": "yyyy-MM-dd HH:mm:ss",
+                "type": "date"
+            },
+            "listTitle": {
+                "analyzer": "ik_max_word",
+                "search_analyzer": "ik_max_word",
+                "type": "text",
+                "fields": {
+                    "raw": {
+                        "type": "text",
+                        "analyzer": "my_analyzer"
+                    }
+                }
+            },
+            "summary": {
+                "analyzer": "ik_max_word",
+                "search_analyzer": "ik_max_word",
+                "type": "text"
+            },
+            "signatureAuthor": {
+                "analyzer": "ik_max_word",
+                "search_analyzer": "ik_max_word",
+                "type": "text"
+            },
+            "contributors": {
+                "analyzer": "ik_max_word",
+                "search_analyzer": "ik_max_word",
+                "type": "text"
+            },
+            "editingUserTruename": {
+                "type": "text"
+            },
+            "keywords": {
+                "analyzer": "ik_max_word",
+                "search_analyzer": "ik_max_word",
+                "type": "text"
+            },
+            "listPics": {
+                "type": "keyword"
+            },
+            "groupName": {
+                "type": "text"
+            },
+            "sortNum": {
+                "type": "long"
+            },
+            "title": {
+                "analyzer": "ik_max_word",
+                "search_analyzer": "ik_max_word",
+                "type": "text"
+            },
+            "content": {
+                "analyzer": "ik_max_word",
+                "search_analyzer": "ik_max_word",
+                "type": "text"
+            },
+            "isFocusImage": {
+                "type": "boolean"
+            },
+            "focusImageTitle": {
+                "analyzer": "ik_max_word",
+                "search_analyzer": "ik_max_word",
+                "type": "text"
+            },
+            "focusDefaultSortNum": {
+                "type": "long"
+            },
+            "pushHomepageStatus": {
+                "type": "integer"
+            },
+            "channelArticleStatus": {
+                "type": "integer"
+            },
+            "channelArticleIsFixedSortnum": {
+                "type": "boolean"
+            },
+            "channelArticleDefaultSortNum": {
+                "type": "long"
+            },
+            "attachImageNum": {
+                "type": "integer"
+            },
+            "videoId": {
+                "type": "integer"
+            },
+            "videoDuration": {
+                "type": "integer"
+            },
+            "videoSize": {
+                "type": "integer"
+            },
+            "area": {
+                "type": "text"
+            },
+            "guid": {
+                "type": "text"
+            },
+            "outerChannel": {
+                "type": "text"
+            },
+            "coverImageUrl": {
+                "type": "keyword"
+            }
+        }
+    }
+}
