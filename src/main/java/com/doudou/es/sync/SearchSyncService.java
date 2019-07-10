@@ -7,6 +7,11 @@ import org.springframework.stereotype.Service;
 import java.util.ArrayList;
 import java.util.List;
 
+/**
+ * @author 豆豆
+ * @date 2019/7/10 14:58
+ * @flag 以万物智能，化百千万亿身
+ */
 @Service
 public class SearchSyncService {
     @Autowired

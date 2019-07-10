@@ -10,6 +10,11 @@ import org.springframework.stereotype.Service;
 import java.io.IOException;
 import java.net.URISyntaxException;
 
+/**
+ * @author 豆豆
+ * @date 2019/7/10 15:00
+ * @flag 以万物智能，化百千万亿身
+ */
 @Service
 @Slf4j
 public class MappingService {
