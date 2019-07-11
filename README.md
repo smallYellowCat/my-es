@@ -769,7 +769,9 @@ Sniffer sniffer = Sniffer.builder(restClient)
 
 
 
-### 3. Java High Level REST Client
+## 3. Java High Level REST Client
+
+### 1. Getting started
 
 Java高级REST客户端在Java低级REST客户端之上工作。 它的主要目标是公开API特定的方法，接受请求对象作为参数并返回响应对象，以便客户端本身处理请求编组
 和响应非编组。
@@ -779,7 +781,7 @@ Java高级REST客户端在Java低级REST客户端之上工作。 它的主要目
 
 Java高级REST客户端依赖于Elasticsearch核心项目。 它接受与TransportClient相同的请求参数，并返回相同的响应对象。
 
-1. 兼容性
+1.1. 兼容性
 
 Java高级REST客户端需要Java 1.8并依赖于Elasticsearch核心项目。客户端版本与客户端开发的Elasticsearch版本相同。它接受与TransportClient相同
 的请求参数，并返回相同的响应对象。如果需要将应用程序从TransportClient迁移到新的REST客户端，请参阅“迁移指南”。
@@ -793,11 +795,11 @@ Java高级REST客户端需要Java 1.8并依赖于Elasticsearch核心项目。客
 建议在将Elasticsearch集群升级到新的主要版本时升级高级客户端，因为REST API中断更改可能会导致意外结果，具体取决于请求所触及的节点，并且新添加的API
 仅受到更新版本的客户端。一旦集群中的所有节点都升级到新的主要版本，客户端应始终最后更新。
 
-2. Javadoc
+1.2. Javadoc
 你可以在此[链接](https://artifacts.elastic.co/javadoc/org/elasticsearch/client/elasticsearch-rest-high-level-client/7.2.0/index.html)找到REST high level client的javadoc
 
 
-3. Maven Repository
+1.3. Maven Repository
 
 high-level Java REST client要求java的版本至少是1.8。高级REST客户端与Elasticsearch具有相同的发布周期。 将版本替换为所需的客户端版本。
 
@@ -844,3 +846,244 @@ maven {
     url 'https://s3.amazonaws.com/download.elasticsearch.org/lucenesnapshots/83f9835'
 }
 ```
+
+1.4. 依赖
+高级Java REST客户端依赖于以下工件及其传递依赖性：
+
+* org.elasticsearch.client:elasticsearch-rest-client
+* org.elasticsearch:elasticsearch
+
+1.5. 初始化
+
+RestHighLevelClient实例需要构建REST低级客户端构建器，如下所示：
+
+```java
+RestHighLevelClient client = new RestHighLevelClient(
+        RestClient.builder(
+                new HttpHost("localhost", 9200, "http"),
+                new HttpHost("localhost", 9201, "http")));
+```
+
+高级客户端将在内部创建用于根据提供的构建器执行请求的低级客户端。 该低级客户端维护一个连接池并启动一些线程，因此当您完好无损地关闭高级客户端时，它将关
+闭内部低级客户端以释放这些资源。 这可以通过关闭来完成：
+
+```java
+client.close();
+```
+
+在关于Java高级客户端的本文档的其余部分中，RestHighLevelClient实例将被引用为客户端。
+
+1.6. RequestOptions
+RestHighLevelClient中的所有API都接受RequestOptions，您可以使用这些RequestOptions以不会改变Elasticsearch执行请求的方式自定义请求。 例如，
+您可以在此处指定NodeSelector来控制哪个节点接收请求。 有关自定义选项的更多示例，请参阅低级客户端文档。
+
+
+### 2. Document API
+
+2.1. Index API
+
+1. Index Request
+IndexRequest需要以下参数：
+
+```java
+IndexRequest request = new IndexRequest("posts"); //索引
+request.id("1"); //请求的文档id
+String jsonString = "{" +
+        "\"user\":\"kimchy\"," +
+        "\"postDate\":\"2013-01-30\"," +
+        "\"message\":\"trying out Elasticsearch\"" +
+        "}";
+request.source(jsonString, XContentType.JSON); //以string的形式提供文档源
+```
+2. 提供文档源
+
+文档源可以以不同的方式提供（除了上述的string示例）
+
+文档源作为Map提供，自动转换为JSON格式
+
+```java
+Map<String, Object> jsonMap = new HashMap<>();
+jsonMap.put("user", "kimchy");
+jsonMap.put("postDate", new Date());
+jsonMap.put("message", "trying out Elasticsearch");
+IndexRequest indexRequest = new IndexRequest("posts")
+    .id("1").source(jsonMap); //
+```
+
+文档源作为XContentBuilder对象提供，Elasticsearch内置助手生成JSON内容
+
+```java
+XContentBuilder builder = XContentFactory.jsonBuilder();
+builder.startObject();
+{
+    builder.field("user", "kimchy");
+    builder.timeField("postDate", new Date());
+    builder.field("message", "trying out Elasticsearch");
+}
+builder.endObject();
+IndexRequest indexRequest = new IndexRequest("posts")
+    .id("1").source(builder);  //
+```
+
+文档源作为Object键对提供，转换为JSON格式
+
+```java
+IndexRequest indexRequest = new IndexRequest("posts")
+    .id("1")
+    .source("user", "kimchy",
+        "postDate", new Date(),
+        "message", "trying out Elasticsearch");//
+```
+
+
+3. 可选参数
+
+可以选择提供以下参数：
+
+Routing value(路由值)
+
+```java
+request.routing("routing");
+```
+
+等待主分片变为可用的超时时间TimeValue； 等待主分片变为可用的超时时间String。
+
+```java
+request.timeout(TimeValue.timeValueSeconds(1)); 
+request.timeout("1s");
+```
+
+将策略刷新为WriteRequest.RefreshPolicy实例; 将策略刷新为String.
+
+```java
+request.setRefreshPolicy(WriteRequest.RefreshPolicy.WAIT_UNTIL); 
+request.setRefreshPolicy("wait_for"); 
+```
+
+版本
+
+```java
+request.version(2);
+```
+
+版本类型
+
+```java
+request.versionType(VersionType.EXTERNAL);
+```
+提供DocWriteRequest.OpType操作类型； 提供String类的操作类型（默认可以是create或是update）
+
+```java
+request.opType(DocWriteRequest.OpType.CREATE); 
+request.opType("create");
+```
+
+索引文档之前要执行的摄取管道的名称
+
+```java
+request.setPipeline("pipeline");
+```
+
+4. 同步执行
+
+以下列方式执行IndexRequest时，客户端在继续执行代码之前等待返回IndexResponse：
+
+```java
+IndexResponse indexResponse = client.index(request, RequestOptions.DEFAULT);
+```
+如果无法解析高级REST客户端中的REST响应，请求超时或类似情况没有从服务器返回响应，则同步调用可能会抛出IOException。
+
+如果服务器返回4xx或5xx错误代码，则高级客户端会尝试解析响应正文错误详细信息，然后抛出通用ElasticsearchException并将原始ResponseException作为
+抑制异常添加到其中。
+
+5. 异步执行
+
+执行IndexRequest也可以以异步方式完成，以便客户端可以直接返回。 用户需要通过将请求和侦听器传递给异步索引方法来指定响应或潜在故障的处理方式：
+
+```java
+//要执行的IndexRequest和执行完成时要使用的ActionListener
+client.indexAsync(request, RequestOptions.DEFAULT, listener);
+```
+
+异步方法不会阻塞并立即返回。 一旦完成，如果执行成功完成，则使用onResponse方法回调ActionListener，如果失败则使用onFailure方法。 故障情形和预期
+异常与同步执行情况相同。
+
+如下是一个典型的index的listener：
+
+```java
+listener = new ActionListener<IndexResponse>() {
+    @Override
+    public void onResponse(IndexResponse indexResponse) {
+        //调用成功执行
+    }
+
+    @Override
+    public void onFailure(Exception e) {
+        //调用失败执行
+    }
+};
+```
+
+6. Index Response
+
+返回的IndexResponse允许检索有关已执行操作的信息，如下所示：
+
+```java
+String index = indexResponse.getIndex();
+String id = indexResponse.getId();
+if (indexResponse.getResult() == DocWriteResponse.Result.CREATED) {
+    //处理（如果需要）第一次创建文档的情况
+
+} else if (indexResponse.getResult() == DocWriteResponse.Result.UPDATED) {
+    //处理（如果需要）文档被重写的情况，因为它已经存在
+}
+ReplicationResponse.ShardInfo shardInfo = indexResponse.getShardInfo();
+if (shardInfo.getTotal() != shardInfo.getSuccessful()) {
+    //处理成功分片数小于总分片数的情况
+}
+if (shardInfo.getFailed() > 0) {
+    for (ReplicationResponse.ShardInfo.Failure failure :
+            shardInfo.getFailures()) {
+        //处理潜在的失败
+        String reason = failure.reason(); 
+    }
+}
+```
+
+如果存在版本冲突，将抛出ElasticsearchException：
+
+```java
+IndexRequest request = new IndexRequest("posts")
+    .id("1")
+    .source("field", "value")
+    .setIfSeqNo(10L)
+    .setIfPrimaryTerm(20);
+try {
+    IndexResponse response = client.index(request, RequestOptions.DEFAULT);
+} catch(ElasticsearchException e) {
+    if (e.status() == RestStatus.CONFLICT) {
+        //引发的异常表示返回了版本冲突错误
+    }
+}
+```
+
+如果opType设置为create并且已存在具有相同索引和id的文档，则会发生相同的情况：
+
+
+```java
+IndexRequest request = new IndexRequest("posts")
+    .id("1")
+    .source("field", "value")
+    .opType(DocWriteRequest.OpType.CREATE);
+try {
+    IndexResponse response = client.index(request, RequestOptions.DEFAULT);
+} catch(ElasticsearchException e) {
+    if (e.status() == RestStatus.CONFLICT) {
+        //引发的异常表示返回了版本冲突错误
+    }
+}
+```
+
+
+2.2. Get API
+
