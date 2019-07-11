@@ -124,4 +124,179 @@ Java REST Client有两个版本：
     
 ### 2. Java Low Level REST Client
 
+1. Maven仓库
+
+低级的java rest client要求的最低java版本是1.7。低级REST Client 与ElasticSearch的发布周期相同。将版本替换为所需的客户端版本。客户端版本和客户端
+可以通信的ElasticSearch版本之间没有关系。低级REST Client与所有ElasticSearch版本兼容。
+
+Maven依赖：
+
+```xml
+<dependency>
+    <groupId>org.elasticsearch.client</groupId>
+    <artifactId>elasticsearch-rest-client</artifactId>
+    <version>7.2.0</version>
+</dependency>
+```
+
+Gradle依赖：
+
+```groovy
+dependencies {
+    compile 'org.elasticsearch.client:elasticsearch-rest-client:7.2.0'
+}
+```
+
+2. 所需依赖
+
+低级Java REST Client内部使用Apache Http Async Client 发送HTTP请求。它依赖于以下构件，即异步HTTP客户端及其自身的可传递依赖项：
+
+* org.apache.httpcomponents:httpasyncclient
+* org.apache.httpcomponents:httpcore-nio
+* org.apache.httpcomponents:httpclient
+* org.apache.httpcomponents:httpcore
+* commons-codec:commons-codec
+* commons-logging:commons-logging
+
+
+3. Shading
+
+为了避免版本冲突，可以将依赖项隐藏并打包到客户端的单个JAR文件中（有时称为“uber JAR”或“fat JAR”）。隐藏依赖性包括获取其内容（资源文件和Java类文件）
+并将其包重新命名，然后将它们放入与低级别Java REST Client相同的JAR文件中。对于Gradle和Maven，可以通过第三方插件对jar进行遮蔽。
+         
+请注意，对JAR进行隐藏也会有影响。例如，对Commons Logging层进行隐藏意味着第三方日志记录后端也需要进行隐藏。
+
+Maven配置
+
+下面是使用Maven的Shade插件的配置。将其添加到你的pom.xml文件。
+
+```xml
+<build>
+    <plugins>
+        <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-shade-plugin</artifactId>
+            <version>3.1.0</version>
+            <executions>
+                <execution>
+                    <phase>package</phase>
+                    <goals><goal>shade</goal></goals>
+                    <configuration>
+                        <relocations>
+                            <relocation>
+                                <pattern>org.apache.http</pattern>
+                                <shadedPattern>hidden.org.apache.http</shadedPattern>
+                            </relocation>
+                            <relocation>
+                                <pattern>org.apache.logging</pattern>
+                                <shadedPattern>hidden.org.apache.logging</shadedPattern>
+                            </relocation>
+                            <relocation>
+                                <pattern>org.apache.commons.codec</pattern>
+                                <shadedPattern>hidden.org.apache.commons.codec</shadedPattern>
+                            </relocation>
+                            <relocation>
+                                <pattern>org.apache.commons.logging</pattern>
+                                <shadedPattern>hidden.org.apache.commons.logging</shadedPattern>
+                            </relocation>
+                        </relocations>
+                    </configuration>
+                </execution>
+            </executions>
+        </plugin>
+    </plugins>
+</build>
+```
+
+Gradle配置
+
+下面是使用Gradle的ShadowJar插件的配置。添加下面的配置到你的build.gradle文件。
+
+```groovy
+shadowJar {
+    relocate 'org.apache.http', 'hidden.org.apache.http'
+    relocate 'org.apache.logging', 'hidden.org.apache.logging'
+    relocate 'org.apache.commons.codec', 'hidden.org.apache.commons.codec'
+    relocate 'org.apache.commons.logging', 'hidden.org.apache.commons.logging'
+}
+```
+
+
+4. 初始化
+
+可以通过RestClient.builder（HttpHost ...）静态方法创建的相应RestClientBuilder类构建RestClient实例。 唯一必需的参数是客户端将与之通信的
+一个或多个主机，作为HttpHost的实例提供，如下所示：
+
+```java
+RestClient restClient = RestClient.builder(
+    new HttpHost("localhost", 9200, "http"),
+    new HttpHost("localhost", 9201, "http")).build();
+```
+
+RestClient类是线程安全的，理想情况下与使用它的应用程序具有相同的生命周期。 重要的是它在不再需要时关闭，以便它使用的所有资源得到正确释放，例如底层的
+http客户端实例及其线程：
+
+```java
+restClient.close();
+```
+
+RestClientBuilder还允许在构建RestClient实例时可选地设置以下配置参数：
+
+```java
+RestClientBuilder builder = RestClient.builder(
+    new HttpHost("localhost", 9200, "http"));
+Header[] defaultHeaders = new Header[]{new BasicHeader("header", "value")};
+//设置需要随每个请求一起发送的默认标头，以防止必须为每个请求指定它们
+builder.setDefaultHeaders(defaultHeaders);
+```
+
+
+设置一个侦听器，该侦听器在每次节点失败时都会收到通知，以防需要采取操作。在启用故障嗅探时在内部使用。
+
+```java
+RestClientBuilder builder = RestClient.builder(
+        new HttpHost("localhost", 9200, "http"));
+builder.setFailureListener(new RestClient.FailureListener() {
+    @Override
+    public void onFailure(Node node) {
+        
+    }
+});    
+```
+设置节点选择器，用于过滤客户端将请求发送到客户端本身的节点。 这有助于防止在启用嗅探时向专用主节点发送请求。 默认情况下，客户端向每个配置的节点发送请求。
+
+```java
+RestClientBuilder builder = RestClient.builder(
+    new HttpHost("localhost", 9200, "http"));
+builder.setNodeSelector(NodeSelector.SKIP_DEDICATED_MASTERS); 
+```
+
+设置允许修改默认请求配置的回调（例如，请求超时，身份验证或org.apache.http.client.config.RequestConfig.Builder允许设置的任何内容）
+
+```java
+RestClientBuilder builder = RestClient.builder(
+        new HttpHost("localhost", 9200, "http"));
+builder.setRequestConfigCallback(
+    new RestClientBuilder.RequestConfigCallback() {
+        @Override
+        public RequestConfig.Builder customizeRequestConfig(
+                RequestConfig.Builder requestConfigBuilder) {
+            return requestConfigBuilder.setSocketTimeout(10000); 
+        }
+    });
+```
+设置允许修改http客户端配置的回调（例如，通过ssl进行加密通信，或者org.apache.http.impl.nio.client.HttpAsyncClientBuilder允许设置的任何内容）
+
+```java
+RestClientBuilder builder = RestClient.builder(
+    new HttpHost("localhost", 9200, "http"));
+builder.setHttpClientConfigCallback(new HttpClientConfigCallback() {
+        @Override
+        public HttpAsyncClientBuilder customizeHttpClient(
+                HttpAsyncClientBuilder httpClientBuilder) {
+            return httpClientBuilder.setProxy(
+                new HttpHost("proxy", 9000, "http"));  
+        }
+    });
+```
 ### 3. Java High Level REST Client
