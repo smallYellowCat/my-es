@@ -1087,3 +1087,148 @@ try {
 
 2.2. Get API
 
+1. Get Request
+
+GetRequest需要如下参数：
+
+```java
+GetRequest getRequest = new GetRequest(
+        "posts", //索引
+        "1");   //文档id
+```
+
+2. 可选参数
+
+提供一下的可选参数：
+
+```java
+//禁用源检索，默认情况下启用
+request.fetchSourceContext(FetchSourceContext.DO_NOT_FETCH_SOURCE);
+
+String[] includes = new String[]{"message", "*Date"};
+String[] excludes = Strings.EMPTY_ARRAY;
+FetchSourceContext fetchSourceContext =
+        new FetchSourceContext(true, includes, excludes);
+//配置源包含的特定字段
+request.fetchSourceContext(fetchSourceContext); 
+
+
+String[] includes = Strings.EMPTY_ARRAY;
+String[] excludes = new String[]{"message"};
+FetchSourceContext fetchSourceContext =
+        new FetchSourceContext(true, includes, excludes);
+//配置源排除的特定字段
+request.fetchSourceContext(fetchSourceContext); 
+
+
+//配置特定存储字段的检索（要求字段分别存储在映射中）
+request.storedFields("message"); 
+GetResponse getResponse = client.get(request, RequestOptions.DEFAULT);
+//检索消息存储字段（要求字段分别存储在映射中）
+String message = getResponse.getField("message").getValue(); 
+
+//路由值
+request.routing("routing");
+//偏好值
+request.preference("preference");
+//设置实时标志位false（默认为true）
+request.realtime(false);
+//在检索文档之前执行刷新（默认为false）
+request.refresh(true);
+//版本
+request.version(2);
+//版本类型
+request.versionType(VersionType.EXTERNAL); 
+
+//
+```
+
+3. 同步执行
+
+以下列方式执行GetRequest时，客户端在继续执行代码之前等待返回GetResponse：
+
+```java
+GetResponse getResponse = client.get(getRequest, RequestOptions.DEFAULT);
+```
+
+如果无法解析高级REST客户端中的REST响应，请求超时或类似情况没有从服务器返回响应，则同步调用可能会抛出IOException。
+
+如果服务器返回4xx或5xx错误代码，则高级客户端会尝试解析响应正文错误详细信息，然后抛出通用ElasticsearchException并将原始ResponseException作为
+抑制异常添加到其中。
+
+
+4. 异步执行
+
+执行GetRequest也可以以异步方式完成，以便客户端可以直接返回。 用户需要通过将请求和侦听器传递给异步get方法来指定响应或潜在故障的处理方式：
+
+```java
+//要执行的GetRequest和执行完成时要使用的ActionListener
+client.getAsync(request, RequestOptions.DEFAULT, listener);
+```
+
+异步方法不会阻塞并立即返回。 一旦完成，如果执行成功完成，则使用onResponse方法回调ActionListener，如果失败则使用onFailure方法。 故障情形和预期异常与同步执行情况相同。
+
+get的典型监听器如下：
+
+```java
+ActionListener<GetResponse> listener = new ActionListener<GetResponse>() {
+    @Override
+    public void onResponse(GetResponse getResponse) {
+        //Called when the execution is successfully completed.
+    }
+
+    @Override
+    public void onFailure(Exception e) {
+        //Called when the whole GetRequest fails.
+    }
+};
+```
+
+5. Get Response
+
+返回的GetResponse允许检索所请求的文档及其元数据和最终存储的字段。
+
+```java
+String index = getResponse.getIndex();
+String id = getResponse.getId();
+if (getResponse.isExists()) {
+    long version = getResponse.getVersion();
+    //Retrieve the document as a String
+    String sourceAsString = getResponse.getSourceAsString();   
+    //Retrieve the document as a Map<String, Object>
+    Map<String, Object> sourceAsMap = getResponse.getSourceAsMap(); 
+    //Retrieve the document as a byte[]
+    byte[] sourceAsBytes = getResponse.getSourceAsBytes();          
+} else {
+    /*
+    * 处理未找到文档的方案。 请注意，虽然返回的响应具有404状态代码，但返回有效的GetResponse而不是抛出异常。 
+    * 此类响应不包含任何源文档，并且其isExists方法返回false。
+    * */
+}
+```
+
+当针对不存在的索引执行get请求时，响应具有404状态代码，抛出ElasticsearchException，需要按如下方式处理：
+
+```java
+GetRequest request = new GetRequest("does_not_exist", "1");
+try {
+    GetResponse getResponse = client.get(request, RequestOptions.DEFAULT);
+} catch (ElasticsearchException e) {
+    if (e.status() == RestStatus.NOT_FOUND) {
+        //Handle the exception thrown because the index does not exist
+    }
+}
+```
+
+如果已请求特定文档版本，并且现有文档具有不同的版本号，则会引发版本冲突：
+
+```java
+try {
+    GetRequest request = new GetRequest("posts", "1").version(2);
+    GetResponse getResponse = client.get(request, RequestOptions.DEFAULT);
+} catch (ElasticsearchException exception) {
+    if (exception.status() == RestStatus.CONFLICT) {
+        //引发的异常表示返回了版本冲突错误
+    }
+}
+```
