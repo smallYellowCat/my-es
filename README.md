@@ -299,4 +299,548 @@ builder.setHttpClientConfigCallback(new HttpClientConfigCallback() {
         }
     });
 ```
+
+5. 执行请求
+
+创建RestClient后，可以通过调用performRequest或performRequestAsync来发送请求。 performRequest是同步的，将阻塞调用线程并在请求成功时返回Response，
+如果失败则抛出异常。 performRequestAsync是异步的，它接受一个ResponseListener参数，它在请求成功时调用Response，如果it4失败则调用Exception。
+
+同步方式：
+
+```java
+
+Request request = new Request(
+    "GET",  //The HTTP method (GET, POST, HEAD, etc)
+    "/"); //The endpoint on the server
+Response response = restClient.performRequest(request);
+```
+
+异步方式：
+
+```java
+Request request = new Request(
+    "GET",  
+    "/");   
+restClient.performRequestAsync(request, new ResponseListener() {
+    @Override
+    public void onSuccess(Response response) {
+        //	Handle the response
+    }
+
+    @Override
+    public void onFailure(Exception exception) {
+        //Handle the failure
+    }
+});
+```
+你可以向request对象中添加请求参数
+
+```java
+request.addParameter("pretty", "true");
+```
+
+你可以在任何HttpEntity中设置请求体
+
+```java
+request.setEntity(new NStringEntity(
+        "{\"json\":\"text\"}",
+        ContentType.APPLICATION_JSON));
+```
+**注意：为httpEntity指定的ContentType很重要，因为它将用于设置Content-Type头，以便ElasticSearch可以正确分析内容。**
+
+
+您还可以将其设置为String，默认为ContentType为application/json。
+
+```java
+request.setJsonEntity("{\"json\":\"text\"}");
+```
+
+6. 请求选项
+
+RequestOptions类保存请求的部分，这些部分应该在同一应用程序中的多个请求之间共享。您可以创建一个单实例并在所有请求之间共享它：
+
+```java
+    private static final RequestOptions COMMON_OPTIONS;
+    static {
+        RequestOptions.Builder builder = RequestOptions.DEFAULT.toBuilder();
+        builder.addHeader("Authorization", "Bearer " + TOKEN); //添加请求需要的任何头
+        builder.setHttpAsyncResponseConsumerFactory(    //自定义响应的消费者       
+            new HttpAsyncResponseConsumerFactory
+                .HeapBufferedResponseConsumerFactory(30 * 1024 * 1024 * 1024));
+        COMMON_OPTIONS = builder.build();
+    }
+```
+
+addHeader用于授权或在Elasticsearch前使用代理所需的标头。 无需设置Content-Type标头，因为客户端将自动从附加到请求的HttpEntity设置该标头。
+
+您可以设置NodeSelector来控制哪些节点将接收请求。 NodeSelector.NOT_MASTER_ONLY是一个不错的选择。
+
+您还可以自定义用于缓冲异步响应的响应消费者。 默认使用者将在JVM堆上缓冲最多100MB的响应。 如果响应较大，则请求将失败。 例如，如果您在如上例所示的堆约
+束环境中运行，则可以降低可能有用的最大大小。
+
+创建单例后，您可以在发出请求时使用它：
+
+```java
+request.setOptions(COMMON_OPTIONS);
+```
+
+您还可以根据请求自定义这些选项。 例如，这会添加一个额外的头：
+
+```java
+RequestOptions.Builder options = COMMON_OPTIONS.toBuilder();
+options.addHeader("cats", "knock things off of other things");
+request.setOptions(options);
+```
+
+7. 多个并行异步操作
+
+客户很乐意并行执行许多操作。 以下示例并行索引许多文档。 在现实世界中，您可能希望使用_bulk API，但示例是说明性的。
+
+```java
+final CountDownLatch latch = new CountDownLatch(documents.length);
+for (int i = 0; i < documents.length; i++) {
+    Request request = new Request("PUT", "/posts/doc/" + i);
+    //let's assume that the documents are stored in an HttpEntity array
+    request.setEntity(documents[i]);
+    restClient.performRequestAsync(
+            request,
+            new ResponseListener() {
+                @Override
+                public void onSuccess(Response response) {
+                    //处理返回的响应
+                    latch.countDown();
+                }
+
+                @Override
+                public void onFailure(Exception exception) {
+                    //处理返回的异常，由于通信错误或带有错误码的响应，处理返回的异常
+                    latch.countDown();
+                }
+            }
+    );
+}
+latch.await();
+```
+
+8. 读取响应
+
+Response对象（由同步performRequest方法返回或作为ResponseListener.onSuccess（Response）中的参数接收）包装http客户端返回的响应对象并公开
+一些其他信息。
+
+```java
+Response response = restClient.performRequest(new Request("GET", "/"));
+RequestLine requestLine = response.getRequestLine(); //执行请求的信息
+HttpHost host = response.getHost(); //返回响应的主机
+int statusCode = response.getStatusLine().getStatusCode(); //响应状态行，你可以从中检索状态代码
+Header[] headers = response.getHeaders(); //响应头，也可以通过getHeader(String)按名称检索
+String responseBody = EntityUtils.toString(response.getEntity()); //响应主体包含在org.apache.http.HttpEntity对象中
+```
+
+执行请求时，会抛出异常（或在以下方案中作为ResponseListener.onFailure（Exception）中的参数接收：
+
+**IOException**
+
+  通信问题 (例如. SocketTimeoutException)
+    
+**ResponseException**
+
+  返回了响应，但其状态代码表示错误（不是2xx）。 ResponseException源自有效的http响应，因此它公开其相应的Response对象，该对象提供对返回的响应的
+  访问。
+  
+  
+  
+注意：对于返回404状态代码的HEAD请求，不会抛出ResponseException，因为它是一个预期的HEAD响应，只表示找不到该资源。 除非ignore参数包含404，否则
+所有其他HTTP方法（例如，GET）都会为404响应抛出ResponseException.ignore是一个特殊的客户端参数，它不会被发送到Elasticsearch并包含逗号分隔的错
+误状态代码列表。 它允许控制是否应将某些错误状态代码视为预期响应而不是异常。 这对于例如get api很有用，因为它可以在文档丢失时返回404，在这种情况下，
+响应正文将不包含错误，而是通常的get api响应，只是没有找到未找到的文档。
+
+请注意，低级客户端不会公开任何json编组和取消编组的帮助程序。 用户可以自由地使用他们喜欢的库。
+
+底层的Apache Async Http Client附带了不同的org.apache.http.HttpEntity实现，这些实现允许以不同的格式（流，字节数组，字符串等）提供请求主体。 
+至于读取响应体，HttpEntity.getContent方法很方便，它返回从先前缓冲的响应体读取的InputStream。 作为替代方案，可以提供一个自定义的
+org.apache.http.nio.protocol.HttpAsyncResponseConsumer来控制字节的读取和缓冲方式。
+
+
+9. 日志
+
+Java REST Client使用与Apache Async Http Client使用的相同的日志库：Apache Commons Logging，它支持许多流行的日志记录实现。 要启用日志记录
+的java包是客户端本身的org.elasticsearch.client和嗅探器的org.elasticsearch.client.sniffer。
+
+还可以启用请求跟踪器日志记录，以便以curl格式记录每个请求和相应的响应。 这在调试时很方便，例如，如果需要手动执行请求以检查它是否仍然产生与它相同的响应。 
+为跟踪器包启用跟踪日志记录以打印出此类日志行。 请注意，此类日志记录非常昂贵，不应在生产环境中始终启用，而应仅在需要时暂时使用。
+
+10. 公有配置
+
+正如Initialization中所解释的，RestClientBuilder支持提供RequestConfigCallback和HttpClientConfigCallback，它们允许
+Apache Async Http Client公开的任何自定义。 这些回调可以修改客户端的某些特定行为，而不会覆盖RestClient初始化的所有其他默认配置。 本节介绍一些
+需要为低级Java REST Client进行其他配置的常见方案。
+
+10.1 超时设置
+
+配置请求超时可以通过在其构建器构建RestClient时提供RequestConfigCallback实例来完成。 该接口有一个方法，它接收org.apache.http.client
+.config.RequestConfig.Builder的实例作为参数并具有相同的返回类型。 可以修改请求配置构建器，然后返回。 在以下示例中，我们将连接超时（默认为1秒）
+和套接字超时（默认为30秒）增加。
+
+```java
+RestClientBuilder builder = RestClient.builder(
+    new HttpHost("localhost", 9200))
+    .setRequestConfigCallback(
+        new RestClientBuilder.RequestConfigCallback() {
+            @Override
+            public RequestConfig.Builder customizeRequestConfig(
+                    RequestConfig.Builder requestConfigBuilder) {
+                return requestConfigBuilder
+                    .setConnectTimeout(5000)
+                    .setSocketTimeout(60000);
+            }
+        });
+```
+10.2 线程数量
+
+Apache Http Async Client默认启动一个调度程序线程，以及连接管理器使用的许多工作线程，与本地检测到的处理器数量一样多（取决于Runtime.getRuntime()
+.availableProcessors()返回的数量）。 线程数可以修改如下：
+
+```java
+RestClientBuilder builder = RestClient.builder(
+    new HttpHost("localhost", 9200))
+    .setHttpClientConfigCallback(new HttpClientConfigCallback() {
+        @Override
+        public HttpAsyncClientBuilder customizeHttpClient(
+                HttpAsyncClientBuilder httpClientBuilder) {
+            return httpClientBuilder.setDefaultIOReactorConfig(
+                IOReactorConfig.custom()
+                    .setIoThreadCount(1)
+                    .build());
+        }
+    });
+```
+10.3 基本认证
+
+配置基本身份验证可以通过在其构建器构建RestClient时提供HttpClientConfigCallback来完成。 该接口有一个方法，它接收org.apache.http.impl.
+nio.client.HttpAsyncClientBuilder的实例作为参数，并具有相同的返回类型。 可以修改http客户端构建器，然后返回。 在以下示例中，我们设置了需要基
+本身份验证的默认凭据提供程序。
+
+```java
+final CredentialsProvider credentialsProvider =
+    new BasicCredentialsProvider();
+credentialsProvider.setCredentials(AuthScope.ANY,
+    new UsernamePasswordCredentials("user", "password"));
+
+RestClientBuilder builder = RestClient.builder(
+    new HttpHost("localhost", 9200))
+    .setHttpClientConfigCallback(new HttpClientConfigCallback() {
+        @Override
+        public HttpAsyncClientBuilder customizeHttpClient(
+                HttpAsyncClientBuilder httpClientBuilder) {
+            return httpClientBuilder
+                .setDefaultCredentialsProvider(credentialsProvider);
+        }
+    });
+```
+抢占式身份验证可以被禁用，这意味着每个请求都将在没有授权头的情况下发送，以查看它是否被接受，并且在收到HTTP 401响应后，它将使用基本身份验证头重新发送
+完全相同的请求。 如果您希望这样做，那么您可以通过HttpAsyncClientBuilder禁用它：
+
+```java
+final CredentialsProvider credentialsProvider =
+    new BasicCredentialsProvider();
+credentialsProvider.setCredentials(AuthScope.ANY,
+    new UsernamePasswordCredentials("user", "password"));
+
+RestClientBuilder builder = RestClient.builder(
+    new HttpHost("localhost", 9200))
+    .setHttpClientConfigCallback(new HttpClientConfigCallback() {
+        @Override
+        public HttpAsyncClientBuilder customizeHttpClient(
+                HttpAsyncClientBuilder httpClientBuilder) {
+            httpClientBuilder.disableAuthCaching(); //Disable preemptive authentication
+            return httpClientBuilder
+                .setDefaultCredentialsProvider(credentialsProvider);
+        }
+    });
+```
+
+10.4 通信加密
+
+也可以通过HttpClientConfigCallback配置加密通信。 作为参数接收的org.apache.http.impl.nio.client.HttpAsyncClientBuilder公开了多种方法
+来配置加密通信：setSSLContext，setSSLSessionStrategy和setConnectionManager，按照最不重要的优先顺序排列。 以下是一个例子：
+
+```java
+KeyStore truststore = KeyStore.getInstance("jks");
+try (InputStream is = Files.newInputStream(keyStorePath)) {
+    truststore.load(is, keyStorePass.toCharArray());
+}
+SSLContextBuilder sslBuilder = SSLContexts.custom()
+    .loadTrustMaterial(truststore, null);
+final SSLContext sslContext = sslBuilder.build();
+RestClientBuilder builder = RestClient.builder(
+    new HttpHost("localhost", 9200, "https"))
+    .setHttpClientConfigCallback(new HttpClientConfigCallback() {
+        @Override
+        public HttpAsyncClientBuilder customizeHttpClient(
+                HttpAsyncClientBuilder httpClientBuilder) {
+            return httpClientBuilder.setSSLContext(sslContext);
+        }
+    });
+```
+如果未提供显式配置，则将使用系统默认配置。
+
+10.5 其他
+
+对于所需的任何其他所需配置，应参考[Apache HttpAsyncClient文档](https：//hc.apache.org/httpcomponents-asyncclient-4.1.x/)。
+
+注意:
+
+如果您的应用程序在安全管理器下运行，则可能会受到JVM默认策略的限制，即无限期缓存正主机名解析和负主机名解析，持续10秒。 如果您连接客户端的主机的已解析
+地址随时间变化，那么您可能希望修改默认的JVM行为。 可以通过将networkaddress.cache.ttl = <timeout>和networkaddress.cache.negative.ttl = <timeout>
+添加到Java安全策略来修改这些。
+
+10.6 节点选择器
+
+客户端以循环方式将每个请求发送到其中一个配置的节点。 可以选择通过在初始化客户端时需要提供的节点选择器来过滤节点。 这在启用嗅探时很有用，以防只有HTTP
+请求才能访问专用主节点。 对于每个请求，客户端将运行最终配置的节点选择器以过滤候选节点，然后从列表中选择下一个节点选择器。
+
+```java
+RestClientBuilder builder = RestClient.builder(
+        new HttpHost("localhost", 9200, "http"));
+/*
+ *设置一个分配感知节点选择器，允许在本地机架中选择一个节点（如果有），否则转到任何机架中的任何其他节点。
+ *它作为首选项而不是严格的要求，因为如果没有任何本地节点可用，它将转到另一个机架，而不是返回任何节点，
+ * 在这种情况下，当首选机架中没有任何节点可用时，客户端将强制恢复本地节点。
+ */
+builder.setNodeSelector(new NodeSelector() { 
+    @Override
+    public void select(Iterable<Node> nodes) {
+        /*
+         * Prefer any node that belongs to rack_one. If none is around
+         * we will go to another rack till it's time to try and revive
+         * some of the nodes that belong to rack_one.
+         */
+        boolean foundOne = false;
+        for (Node node : nodes) {
+            String rackId = node.getAttributes().get("rack_id").get(0);
+            if ("rack_one".equals(rackId)) {
+                foundOne = true;
+                break;
+            }
+        }
+        if (foundOne) {
+            Iterator<Node> nodesIt = nodes.iterator();
+            while (nodesIt.hasNext()) {
+                Node node = nodesIt.next();
+                String rackId = node.getAttributes().get("rack_id").get(0);
+                if ("rack_one".equals(rackId) == false) {
+                    nodesIt.remove();
+                }
+            }
+        }
+    }
+});
+
+```
+警告：
+不一致地选择同一组节点的节点选择器将使循环行为不可预测，并且可能不公平。上面的首选项示例是很好的，因为它是关于节点可用性的原因，这些节点已经影响了循环
+的可预测性。节点选择不应依赖于其他外部因素，否则循环将无法正常工作。
+
+11. 嗅探器
+
+嗅探器
+最小库，允许自动发现运行中的ElasticSearch集群中的节点，并将其设置为现有的RestClient实例。默认情况下，它使用nodes info API检索属于集群的节点，
+并使用jackson解析获得的JSON响应。
+
+与ElasticSearch 2.x及更高版本兼容。
+
+关于Rest Client sniffer的java文档可在此[链接](https://artifacts.elastic.co/javadoc/org/elasticsearch/client/elasticsearch-rest-client-sniffer/7.2.0/index.html)中找到。
+
+11.1 Maven Repository
+
+REST客户端嗅探器与Elasticsearch具有相同的发布周期。 将版本替换为所需的嗅探器版本，首先使用5.0.0-alpha4发布。 嗅探器版本与客户端可以与之通信的
+Elasticsearch版本之间没有任何关系。 Sniffer支持从Elasticsearch 2.x及以后获取节点列表。
+
+Maven依赖
+
+```xml
+<dependency>
+    <groupId>org.elasticsearch.client</groupId>
+    <artifactId>elasticsearch-rest-client-sniffer</artifactId>
+    <version>7.2.0</version>
+</dependency>
+```
+Gradle依赖
+
+```groovy
+dependencies {
+    compile 'org.elasticsearch.client:elasticsearch-rest-client-sniffer:7.2.0'
+}
+```
+
+11.2 用法
+
+一旦创建了RestClient实例，如初始化中所示，可以将Sniffer与其关联。 Sniffer将定期（默认情况下每隔5分钟）使用提供的RestClient从集群中获取当前节
+点列表，并通过调用RestClient.setNodes来更新它们。
+
+```java
+RestClient restClient = RestClient.builder(
+    new HttpHost("localhost", 9200, "http"))
+    .build();
+Sniffer sniffer = Sniffer.builder(restClient).build();
+```
+关闭Sniffer以使其后台线程正确关闭并释放其所有资源非常重要。 Sniffer对象应具有与RestClient相同的生命周期，并在客户端之前关闭：
+
+```java
+sniffer.close();
+restClient.close();
+```
+Sniffer默认每5分钟更新一次节点。 可以通过提供以毫秒为单位的值来定制此间隔，如下所示：
+
+```java
+RestClient restClient = RestClient.builder(
+    new HttpHost("localhost", 9200, "http"))
+    .build();
+Sniffer sniffer = Sniffer.builder(restClient)
+    .setSniffIntervalMillis(60000).build();
+```
+
+也可以在失败时启用嗅探，这意味着在每次失败后，节点列表都会立即更新，而不是在接下来的普通嗅探循环中更新。在这种情况下，需要首先创建一个snifonfailureListener，
+然后在restclient创建时提供它。另外，在稍后创建嗅探器后，它需要与同一个snifonfailureListener实例相关联，在每次失败时都会通知该实例，并使用嗅探
+器执行所描述的其他嗅探循环。
+
+```java
+SniffOnFailureListener sniffOnFailureListener =
+    new SniffOnFailureListener();
+RestClient restClient = RestClient.builder(
+    new HttpHost("localhost", 9200))
+    .setFailureListener(sniffOnFailureListener) //设置失败监听器
+    .build();
+Sniffer sniffer = Sniffer.builder(restClient)
+    /*
+    * 当嗅探失败时，不仅节点在每次失败后都会得到更新，而且默认情况下在失败后的一分钟，还会提前安排一次额外的嗅探循环，假设情况会恢复正常，我们希望尽
+    * 快检测到这一点。所述间隔可以通过setsniffafterfiluredelaymillis方法在嗅探器创建时定制。请注意，最后一个配置参数在未启用故障嗅探时不起作
+    * 用，如上文所述。
+    * 
+    **/
+    .setSniffAfterFailureDelayMillis(30000) 
+    .build();
+sniffOnFailureListener.setSniffer(sniffer); //设置嗅探实例的失败监听器
+```
+Elasticsearch Nodes Info api不会返回连接到节点时要使用的协议，而只返回它们的host：port键值对，因此默认使用http。 如果应该使用https，则必须
+手动创建ElasticsearchNodesSniffer实例并按如下方式提供：
+```java
+RestClient restClient = RestClient.builder(
+        new HttpHost("localhost", 9200, "http"))
+        .build();
+NodesSniffer nodesSniffer = new ElasticsearchNodesSniffer(
+        restClient,
+        ElasticsearchNodesSniffer.DEFAULT_SNIFF_REQUEST_TIMEOUT,
+        ElasticsearchNodesSniffer.Scheme.HTTPS);
+Sniffer sniffer = Sniffer.builder(restClient)
+        .setNodesSniffer(nodesSniffer).build();
+```
+
+同样，还可以自定义snifkRequestTimeout，默认为1秒。这是在调用nodes info api时作为querystring参数提供的超时参数，因此当服务器端的超时到期时，
+仍然会返回有效的响应，尽管它可能只包含属于集群的节点的一个子集，但直到那时（超时时）才响应。
+
+```java
+RestClient restClient = RestClient.builder(
+    new HttpHost("localhost", 9200, "http"))
+    .build();
+NodesSniffer nodesSniffer = new ElasticsearchNodesSniffer(
+    restClient,
+    TimeUnit.SECONDS.toMillis(5),
+    ElasticsearchNodesSniffer.Scheme.HTTP);
+Sniffer sniffer = Sniffer.builder(restClient)
+    .setNodesSniffer(nodesSniffer).build();
+```
+
+此外，可以为高级用例提供自定义NodesSniffer实现，这些用例可能需要从外部源而不是从Elasticsearch获取`Node`s：
+
+```java
+RestClient restClient = RestClient.builder(
+    new HttpHost("localhost", 9200, "http"))
+    .build();
+NodesSniffer nodesSniffer = new NodesSniffer() {
+        @Override
+        public List<Node> sniff() throws IOException {
+            return null; //从外部源获取主机
+        }
+    };
+Sniffer sniffer = Sniffer.builder(restClient)
+    .setNodesSniffer(nodesSniffer).build();
+```
+
+
+
 ### 3. Java High Level REST Client
+
+Java高级REST客户端在Java低级REST客户端之上工作。 它的主要目标是公开API特定的方法，接受请求对象作为参数并返回响应对象，以便客户端本身处理请求编组
+和响应非编组。
+
+可以同步或异步调用每个API。 同步方法返回响应对象，而名称以async后缀结尾的异步方法需要在收到响应或错误后通知（在由低级客户端管理的线程池上）的侦听器
+参数。
+
+Java高级REST客户端依赖于Elasticsearch核心项目。 它接受与TransportClient相同的请求参数，并返回相同的响应对象。
+
+1. 兼容性
+
+Java高级REST客户端需要Java 1.8并依赖于Elasticsearch核心项目。客户端版本与客户端开发的Elasticsearch版本相同。它接受与TransportClient相同
+的请求参数，并返回相同的响应对象。如果需要将应用程序从TransportClient迁移到新的REST客户端，请参阅“迁移指南”。
+
+高级客户端保证能够与运行在相同主要版本和更大或相同次要版本上的任何Elasticsearch节点进行通信。它不需要与它与之通信的Elasticsearch节点处于相同的次
+要版本，因为它是向前兼容的，这意味着它支持与Elasticsearch的更高版本进行通信，而不是与其开发的版本进行通信。
+
+6.0客户端能够与任何6.x Elasticsearch节点通信，而6.1客户端肯定能够与6.1,6.2和任何更高版本的6.x版本进行通信，但在与先前的Elasticsearch节点通
+信时可能存在不兼容问题版本，例如在6.1和6.0之间，以防6.1客户端支持6.0节点不知道的某些API的新请求主体字段。
+
+建议在将Elasticsearch集群升级到新的主要版本时升级高级客户端，因为REST API中断更改可能会导致意外结果，具体取决于请求所触及的节点，并且新添加的API
+仅受到更新版本的客户端。一旦集群中的所有节点都升级到新的主要版本，客户端应始终最后更新。
+
+2. Javadoc
+你可以在此[链接](https://artifacts.elastic.co/javadoc/org/elasticsearch/client/elasticsearch-rest-high-level-client/7.2.0/index.html)找到REST high level client的javadoc
+
+
+3. Maven Repository
+
+high-level Java REST client要求java的版本至少是1.8。高级REST客户端与Elasticsearch具有相同的发布周期。 将版本替换为所需的客户端版本。
+
+Maven依赖
+
+```xml
+<dependency>
+    <groupId>org.elasticsearch.client</groupId>
+    <artifactId>elasticsearch-rest-high-level-client</artifactId>
+    <version>7.2.0</version>
+</dependency>
+```
+Gradle依赖
+
+```groovy
+dependencies {
+    compile 'org.elasticsearch.client:elasticsearch-rest-high-level-client:7.2.0'
+}
+```
+
+Lucene Snapshot repository
+
+任何主要版本（如测试版）的最新版本可能都是基于Lucene Snapshot版本构建的。 在这种情况下，您将无法解析客户端的Lucene依赖关系。
+
+例如，如果要使用依赖于Lucene 8.0.0-snapshot-83f9835的7.0.0-beta1版本，则必须定义以下存储库。
+
+对于Maven
+
+```xml
+<repository>
+    <id>elastic-lucene-snapshots</id>
+    <name>Elastic Lucene Snapshots</name>
+    <url>https://s3.amazonaws.com/download.elasticsearch.org/lucenesnapshots/83f9835</url>
+    <releases><enabled>true</enabled></releases>
+    <snapshots><enabled>false</enabled></snapshots>
+</repository>
+```
+
+对于Gradle
+
+```groovy
+maven {
+    name 'lucene-snapshots'
+    url 'https://s3.amazonaws.com/download.elasticsearch.org/lucenesnapshots/83f9835'
+}
+```
