@@ -1232,3 +1232,126 @@ try {
     }
 }
 ```
+
+2.3. Exists API
+
+如果文档存在，则exists API返回true，否则返回false。
+
+1. Exists Request
+
+它就像Get API一样使用GetRequest。 支持所有可选参数。 由于exists（）只返回true或false，我们建议关闭获取_source和任何存储的字段，以便请求稍微
+轻一点：
+
+```java
+GetRequest getRequest = new GetRequest(
+    "posts", //索引
+    "1");    //文档id
+getRequest.fetchSourceContext(new FetchSourceContext(false)); //禁止获取_source
+getRequest.storedFields("_none_"); //禁止获取存储字段
+```
+
+2. 同步执行
+
+以下列方式执行GetRequest时，客户端在继续执行代码之前等待返回布尔值：
+
+```java
+boolean exists = client.exists(getRequest, RequestOptions.DEFAULT);
+```
+如果无法解析高级REST客户端中的REST响应，请求超时或类似情况没有从服务器返回响应，则同步调用可能会抛出IOException。
+
+如果服务器返回4xx或5xx错误代码，则高级客户端会尝试解析响应正文错误详细信息，然后抛出通用ElasticsearchException并将原始ResponseException作为
+抑制异常添加到其中。
+
+
+3. 异步执行
+
+执行GetRequest也可以以异步方式完成，以便客户端可以直接返回。 用户需要通过将请求和侦听器传递给异步exists方法来指定响应或潜在故障的处理方式：
+
+```java
+client.existsAsync(getRequest, RequestOptions.DEFAULT, listener);
+```
+
+异步方法不会阻塞并立即返回。 一旦完成，如果执行成功完成，则使用onResponse方法回调ActionListener，如果失败则使用onFailure方法。 故障情形和预期
+异常与同步执行情况相同。
+
+典型的监听器如下所示：
+
+```java
+ActionListener<Boolean> listener = new ActionListener<Boolean>() {
+    @Override
+    public void onResponse(Boolean exists) {
+        
+    }
+
+    @Override
+    public void onFailure(Exception e) {
+        
+    }
+};
+```
+
+4. 源存在请求
+
+存在请求的变体是existsSource方法，该方法附加检查所讨论的文档是否存储了源。 如果索引的映射选择删除对在文档中存储JSON源的支持，则此方法将为此索引中
+的文档返回false。
+
+
+2.4. Delete API
+
+1. Delete Request
+
+DeleteRequest有两个必须的参数：
+
+```java
+DeleteRequest request = new DeleteRequest(
+        "posts",    
+        "1"); 
+```
+
+2. 可选参数
+
+提供以下可选参数：
+
+```java
+//路由值
+request.routing("routing");
+
+//等待主分片变为可用的超时时间，两种方式：
+request.timeout(TimeValue.timeValueMinutes(2)); 
+request.timeout("2m");
+
+//设置刷新策略，两种方式
+request.setRefreshPolicy(WriteRequest.RefreshPolicy.WAIT_UNTIL); 
+request.setRefreshPolicy("wait_for"); 
+//版本
+request.version(2);
+//版本类型
+request.versionType(VersionType.EXTERNAL);
+```
+
+3. 同步执行
+4. 异步执行
+5. Delete Response
+
+2.5. Update API
+
+2.6. Term Vectors API
+
+2.7. Bulk API
+
+2.8. Multi-Get API
+
+2.9. Reindex API
+
+2.10. Update By Query API
+
+2.11. Delete By Query API
+
+2.12. Rethrottle API
+
+2.13. Multi Term Vectors API
+
+
+### 3. Search APIs
+### 4. Miscellaneous APIs
+### 5. Indices APIs
