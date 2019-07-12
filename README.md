@@ -1330,8 +1330,91 @@ request.versionType(VersionType.EXTERNAL);
 ```
 
 3. 同步执行
+
+以下列方式执行DeleteRequest时，客户端在继续执行代码之前等待返回DeleteResponse：
+
+```java
+DeleteResponse deleteResponse = client.delete(
+        request, RequestOptions.DEFAULT);
+```
+
+如果无法解析高级REST客户端中的REST响应，请求超时或类似情况没有从服务器返回响应，则同步调用可能会抛出IOException。
+
+如果服务器返回4xx或5xx错误代码，则高级客户端会尝试解析响应正文错误详细信息，然后抛出通用ElasticsearchException并将原始ResponseException作为
+抑制异常添加到其中。
+
 4. 异步执行
+
+执行DeleteRequest也可以以异步方式完成，以便客户端可以直接返回。 用户需要通过将请求和侦听器传递给异步删除方法来指定响应或潜在故障的处理方式：
+
+```java
+client.deleteAsync(request, RequestOptions.DEFAULT, listener);
+```
+
+异步方法不会阻塞并立即返回。 一旦完成，如果执行成功完成，则使用onResponse方法回调ActionListener，如果失败则使用onFailure方法。 故障情形和预期
+异常与同步执行情况相同。
+
+删除的典型监听器如下所示：
+
+```java
+listener = new ActionListener<DeleteResponse>() {
+    @Override
+    public void onResponse(DeleteResponse deleteResponse) {
+        
+    }
+
+    @Override
+    public void onFailure(Exception e) {
+        
+    }
+};
+```
 5. Delete Response
+
+返回的DeleteResponse允许检索有关已执行操作的信息，如下所示：
+
+```java
+
+String index = deleteResponse.getIndex();
+String id = deleteResponse.getId();
+long version = deleteResponse.getVersion();
+ReplicationResponse.ShardInfo shardInfo = deleteResponse.getShardInfo();
+if (shardInfo.getTotal() != shardInfo.getSuccessful()) {
+    //处理成功分片数小于总分片数的情况
+}
+if (shardInfo.getFailed() > 0) {
+    for (ReplicationResponse.ShardInfo.Failure failure :
+            shardInfo.getFailures()) {
+        //处理潜在的失败
+        String reason = failure.reason(); 
+    }
+}
+```
+
+还可以检查文档是否被找到：
+
+```java
+DeleteRequest request = new DeleteRequest("posts", "does_not_exist");
+DeleteResponse deleteResponse = client.delete(
+        request, RequestOptions.DEFAULT);
+if (deleteResponse.getResult() == DocWriteResponse.Result.NOT_FOUND) {
+    //Do something if the document to be deleted was not found
+}
+```
+
+如果存在版本冲突，将抛出ElasticsearchException：
+
+```java
+try {
+    DeleteResponse deleteResponse = client.delete(
+        new DeleteRequest("posts", "1").setIfSeqNo(100).setIfPrimaryTerm(2),
+            RequestOptions.DEFAULT);
+} catch (ElasticsearchException exception) {
+    if (exception.status() == RestStatus.CONFLICT) {
+        //The raised exception indicates that a version conflict error was returned
+    }
+}
+```
 
 2.5. Update API
 
