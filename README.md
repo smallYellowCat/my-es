@@ -1418,6 +1418,256 @@ try {
 
 2.5. Update API
 
+1. Update Request
+
+UpdateRequest必填参数如下所示：
+
+```java
+UpdateRequest request = new UpdateRequest(
+        "posts", 
+        "1");   
+```
+Update API允许使用脚本或传递部分文档来更新现有文档。
+
+2. 使用脚本更新
+
+该脚本可以作为内联脚本提供：
+
+```java
+
+//Script parameters provided as a Map of objects
+Map<String, Object> parameters = singletonMap("count", 4); 
+
+//Create an inline script using the painless language and the previous parameters
+Script inline = new Script(ScriptType.INLINE, "painless",
+        "ctx._source.field += params.count", parameters); 
+//Sets the script to the update request
+request.script(inline);  
+```
+或者作为存储脚本：
+
+```java
+//Reference to a script stored under the name increment-field in the painless language
+Script stored = new Script(
+        ScriptType.STORED, null, "increment-field", parameters);  
+//Sets the script in the update request
+request.script(stored);
+```
+
+3. 更新部分文档
+
+对部分文档更新时使用，部分文档将与现有文档合并。
+
+部分文档可以以不同方式提供：
+
+```java
+UpdateRequest request = new UpdateRequest("posts", "1");
+String jsonString = "{" +
+        "\"updated\":\"2017-01-01\"," +
+        "\"reason\":\"daily update\"" +
+        "}";
+
+
+//Partial document source provided as a String in JSON format
+request.doc(jsonString, XContentType.JSON);
+```
+
+部分文档源作为Map提供，可自动转换为JSON格式:
+
+```java
+XContentBuilder builder = XContentFactory.jsonBuilder();
+builder.startObject();
+{
+    builder.timeField("updated", new Date());
+    builder.field("reason", "daily update");
+}
+builder.endObject();
+UpdateRequest request = new UpdateRequest("posts", "1")
+        .doc(builder);
+```
+部分文档源作为Object键对提供，转换为JSON格式:
+
+```java
+UpdateRequest request = new UpdateRequest("posts", "1")
+        .doc("updated", new Date(),
+             "reason", "daily update");
+```
+
+4. Upserts
+
+如果文档尚不存在，则可以使用upsert方法将某些内容定义为新文档：
+
+```java
+String jsonString = "{\"created\":\"2017-01-01\"}";
+//Upsert document source provided as a String
+request.upsert(jsonString, XContentType.JSON);
+```
+与部分文档更新类似，可以使用接受String，Map，XContentBuilder或Object键对的方法来定义upsert文档的内容。
+
+5. 可选参数
+
+提供以下可选参数：
+
+```java
+request.routing("routing"); 
+request.timeout(TimeValue.timeValueSeconds(1)); 
+request.timeout("1s");
+request.setRefreshPolicy(WriteRequest.RefreshPolicy.WAIT_UNTIL); 
+request.setRefreshPolicy("wait_for"); 
+//如果更新操作的get和indexing阶段之间的另一个操作更改了要更新的文档，则重试更新操作的次数
+request.retryOnConflict(3); 
+//启用源检索，默认情况下禁用
+request.fetchSource(true);
+
+String[] includes = new String[]{"updated", "r*"};
+String[] excludes = Strings.EMPTY_ARRAY;\
+//Configure source inclusion for specific fields
+request.fetchSource(
+        new FetchSourceContext(true, includes, excludes));
+
+String[] includes = Strings.EMPTY_ARRAY;
+String[] excludes = new String[]{"updated"};
+//Configure source exclusion for specific fields
+request.fetchSource(
+        new FetchSourceContext(true, includes, excludes));
+//ifSeqNo
+request.setIfSeqNo(2L); 
+//ifPrimaryTerm
+request.setIfPrimaryTerm(1L);
+//禁用noop检测
+request.detectNoop(false);
+//指示无论文档是否存在，脚本都必须运行，即如果文档尚不存在，脚本将负责创建文档。
+request.scriptedUpsert(true);
+//如果尚未存在，则表明必须将部分文档用作upsert文档。
+request.docAsUpsert(true);
+//设置在继续更新操作之前必须处于活动状态的分片副本数。
+request.waitForActiveShards(2); 
+//作为ActiveShardCount提供的分片副本数：可以是ActiveShardCount.ALL，ActiveShardCount.ONE或ActiveShardCount.DEFAULT（默认）
+request.waitForActiveShards(ActiveShardCount.ALL);
+```
+
+6. 同步执行
+
+以下列方式执行UpdateRequest时，客户端在继续执行代码之前等待返回UpdateResponse：
+
+```java
+UpdateResponse updateResponse = client.update(
+        request, RequestOptions.DEFAULT);
+```
+如果无法解析高级REST客户端中的REST响应，请求超时或类似情况没有从服务器返回响应，则同步调用可能会抛出IOException。
+
+如果服务器返回4xx或5xx错误代码，则高级客户端会尝试解析响应正文错误详细信息，然后抛出通用ElasticsearchException并将原始ResponseException作为
+抑制异常添加到其中。
+
+7. 异步执行
+
+执行UpdateRequest也可以以异步方式完成，以便客户端可以直接返回。 用户需要通过将请求和侦听器传递给异步更新方法来指定响应或潜在故障的处理方式：
+
+```java
+//The UpdateRequest to execute and the ActionListener to use when the execution completes
+client.updateAsync(request, RequestOptions.DEFAULT, listener);
+```
+异步方法不会阻塞并立即返回。 一旦完成，如果执行成功完成，则使用onResponse方法回调ActionListener，如果失败则使用onFailure方法。 故障情形和预期
+异常与同步执行情况相同。
+
+典型的更新监听器如下所示：
+
+```java
+listener = new ActionListener<UpdateResponse>() {
+    @Override
+    public void onResponse(UpdateResponse updateResponse) {
+        
+    }
+
+    @Override
+    public void onFailure(Exception e) {
+        
+    }
+};
+```
+
+5. Update Response
+
+返回的UpdateResponse允许检索有关已执行操作的信息，如下所示：
+
+```java
+String index = updateResponse.getIndex();
+String id = updateResponse.getId();
+long version = updateResponse.getVersion();
+if (updateResponse.getResult() == DocWriteResponse.Result.CREATED) {
+    //处理首次创建文档的情况（upsert）
+} else if (updateResponse.getResult() == DocWriteResponse.Result.UPDATED) {
+    //处理文档更新的情况
+} else if (updateResponse.getResult() == DocWriteResponse.Result.DELETED) {
+    //处理删除文档的情况
+} else if (updateResponse.getResult() == DocWriteResponse.Result.NOOP) {
+    //处理文档未受更新影响的情况，即未对文档执行任何操作（noop）
+}
+```
+通过fetchSource方法在UpdateRequest中启用源检索时，响应包含更新文档的来源：
+
+```java
+//以GetResult的形式检索更新的文档
+GetResult result = updateResponse.getGetResult(); 
+if (result.isExists()) {
+    //以String形式检索更新文档的源
+    String sourceAsString = result.sourceAsString(); 
+    //以Map <String，Object>的形式检索更新文档的源
+    Map<String, Object> sourceAsMap = result.sourceAsMap(); 
+    //以byte []的形式检索更新文档的来源
+    byte[] sourceAsBytes = result.source(); 
+} else {
+    //处理响应中不存在文档源的场景（默认情况下是这种情况）
+}
+```
+
+还可以检查分片失败：
+
+```java
+ReplicationResponse.ShardInfo shardInfo = updateResponse.getShardInfo();
+if (shardInfo.getTotal() != shardInfo.getSuccessful()) {
+    //处理成功分片数小于总分片数的情况
+}
+if (shardInfo.getFailed() > 0) {
+    for (ReplicationResponse.ShardInfo.Failure failure :
+            shardInfo.getFailures()) {
+        //处理潜在的失败
+        String reason = failure.reason(); 
+    }
+}
+```
+
+对不存在的文档执行UpdateRequest时，响应有404状态码，抛出ElasticsearchException，需要按如下方式处理：
+
+```java
+UpdateRequest request = new UpdateRequest("posts", "does_not_exist")
+        .doc("field", "value");
+try {
+    UpdateResponse updateResponse = client.update(
+            request, RequestOptions.DEFAULT);
+} catch (ElasticsearchException e) {
+    if (e.status() == RestStatus.NOT_FOUND) {
+       //Handle the exception thrown because the document not exist 
+    }
+}
+```
+
+如果存在版本冲突，将抛出ElasticsearchException：
+
+```java
+UpdateRequest request = new UpdateRequest("posts", "1")
+        .doc("field", "value")
+        .setIfSeqNo(101L)
+        .setIfPrimaryTerm(200L);
+try {
+    UpdateResponse updateResponse = client.update(
+            request, RequestOptions.DEFAULT);
+} catch(ElasticsearchException e) {
+    if (e.status() == RestStatus.CONFLICT) {
+        //The raised exception indicates that a version conflict error was returned.
+    }
+}
+```
 2.6. Term Vectors API
 
 2.7. Bulk API
