@@ -2315,6 +2315,81 @@ boolean succeeded = clearScrollResponse.isSucceeded();
 
 3.3. Clear Scroll API
 
+当滚动超时时，搜索滚动API使用的搜索上下文将自动删除。但建议在不需要使用clear scroll api时尽快释放搜索上下文。
+
+1. 清除滚动请求
+
+ClearRequest可以如下创建：
+
+```java
+//实例化ClearScrollRequest
+ClearScrollRequest request = new ClearScrollRequest(); 
+//添加滚动id到滚动标识集合用于清除
+request.addScrollId(scrollId); 
+```
+
+2. 提供滚动标识
+
+ClearScrollRequest允许清除单个请求中的一个或多个滚动标识。
+
+滚动标识可以逐个添加到请求中
+
+```java
+request.addScrollId(scrollId);
+```
+或者一起使用：
+
+```java
+request.setScrollIds(scrollIds);
+```
+
+3. 同步执行
+
+```java
+ClearScrollResponse response = client.clearScroll(request, RequestOptions.DEFAULT);
+```
+
+4. 异步执行
+
+清除滚动请求的异步执行需要将ClearScrollRequest实例和ActionListener实例传递给异步方法：
+
+```java
+//he ClearScrollRequest to execute and the ActionListener to use when the execution completes
+client.clearScrollAsync(request, RequestOptions.DEFAULT, listener);
+```
+
+异步方法不会阻塞并立即返回。 一旦完成，如果执行成功完成，则使用onResponse方法回调ActionListener，如果失败则使用onFailure方法。
+
+ClearScrollResponse的典型监听器如下所示：
+
+```java
+ActionListener<ClearScrollResponse> listener =
+        new ActionListener<ClearScrollResponse>() {
+    @Override
+    public void onResponse(ClearScrollResponse clearScrollResponse) {
+        
+    }
+
+    @Override
+    public void onFailure(Exception e) {
+        
+    }
+};
+```
+
+5. 清除滚动的响应
+
+返回的ClearScrollResponse允许检索有关已发布搜索上下文的信息：
+
+```java
+//Return true if the request succeeded
+boolean success = response.isSucceeded(); 
+//Return the number of released search contexts
+int released = response.getNumFreed(); 
+```
+
+
+
 3.4. Multi-Search API
 
 3.5. Search Template API
