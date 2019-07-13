@@ -1670,6 +1670,16 @@ try {
 ```
 2.6. Term Vectors API
 
+Term Vectors API返回特定文档字段中Term的信息和统计信息。 该文档可以存储在索引中或由用户人工提供。
+
+1. Term Vectors Request
+
+termVectorRequest需要一个索引、类型和ID来指定一个特定的文档，以及为其检索信息的字段。
+
+```java
+TermVectorsRequest request = new TermVectorsRequest("authors", "1");
+request.setFields("user");
+```
 2.7. Bulk API
 
 2.8. Multi-Get API
@@ -1686,5 +1696,510 @@ try {
 
 
 ### 3. Search APIs
+
+3.1. Search API
+
+1. Search Request
+
+SearchRequest用于与搜索文档，聚合，建议有关的任何操作，还提供了在结果文档上请求高亮显示的方法。
+
+在最基本的形式中，我们可以向请求添加查询：
+
+```java
+//创建SeachRequest。 没有参数，这将针对所有索引运行。
+SearchRequest searchRequest = new SearchRequest(); 
+//大多数搜索参数都添加到SearchSourceBuilder中。 它为搜索请求正文中的所有内容提供了setter。
+SearchSourceBuilder searchSourceBuilder = new SearchSourceBuilder(); 
+//将match_all查询添加到SearchSourceBuilder。
+searchSourceBuilder.query(QueryBuilders.matchAllQuery()); 
+//将SearchSourceBuilder添加到SeachRequest。
+searchRequest.source(searchSourceBuilder);
+```
+
+1.1. 可选参数
+
+首先来看下SearchRequest的可选参数：
+
+```java
+//指定请求的索引
+SearchRequest searchRequest = new SearchRequest("posts");
+```
+
+还有一些其他有趣的参数：
+
+```java
+//设置路由参数
+searchRequest.routing("routing");
+//设置IndicesOptions控制如何解析不可用的索引以及如何扩展通配符表达式
+searchRequest.indicesOptions(IndicesOptions.lenientExpandOpen());
+//首选参数，例如首先在本地分片执行搜索，默认是随机跨分片。
+searchRequest.preference("_local");
+```
+
+1.2. 使用SearchSourceBuilder
+
+控制搜索行为的大多数选项都可以在SearchSourceBuilder上设置，SearchSourceBuilder包含与Rest API的搜索请求主体中的选项相当或更少的选项。
+
+以下是一些常见选项的几个示例：
+
+```java
+//创建默认的SearchSourceBuilder
+SearchSourceBuilder sourceBuilder = new SearchSourceBuilder(); 
+//设置Query，可是是任意类型的QueryBuilder
+sourceBuilder.query(QueryBuilders.termQuery("user", "kimchy")); 
+//设置确定结果索引的from选项以开始搜索。 默认为0。
+sourceBuilder.from(0); 
+//设置size选项，确定要返回的搜索命中数。 默认为10。
+sourceBuilder.size(5); 
+//设置一个可选的超时，控制允许搜索的时间。
+sourceBuilder.timeout(new TimeValue(60, TimeUnit.SECONDS)); 
+```
+
+在此之后，只需将SearchSourceBuilder添加到SearchRequest：
+
+```java
+SearchRequest searchRequest = new SearchRequest();
+searchRequest.indices("posts");
+searchRequest.source(sourceBuilder);
+```
+
+1.3. 构建查询
+
+使用QueryBuilder对象创建搜索查询。 对于Elasticsearch的Query DSL支持的每种搜索查询类型，都存在QueryBuilder。
+
+可以使用其构造函数创建QueryBuilder：
+
+```java
+//创建一个user字段上匹配kimchy的全文匹配检索
+MatchQueryBuilder matchQueryBuilder = new MatchQueryBuilder("user", "kimchy");
+```
+
+创建后， QueryBuilder对象提供方法去配置它创建的搜索查询的选项：
+
+```java
+//Enable fuzzy matching on the match query
+matchQueryBuilder.fuzziness(Fuzziness.AUTO); 
+//在匹配查询上设置前缀长度选项
+matchQueryBuilder.prefixLength(3); 
+//设置最大扩展选项以控制查询的模糊过程
+matchQueryBuilder.maxExpansions(10); 
+```
+
+也可以使用QueryBuilders实用程序类创建QueryBuilder对象。 此类提供了可用于使用流畅的编程样式创建QueryBuilder对象的辅助方法：
+
+```java
+QueryBuilder matchQueryBuilder = QueryBuilders.matchQuery("user", "kimchy")
+                                                .fuzziness(Fuzziness.AUTO)
+                                                .prefixLength(3)
+                                                .maxExpansions(10);
+```
+无论使用什么方式来创建它，QueryBuilder对象必须被添加到SearchSourceBuilder，如下所示：
+
+```java
+searchSourceBuilder.query(matchQueryBuilder);
+```
+
+[Building Queries页面](https://www.elastic.co/guide/en/elasticsearch/client/java-rest/7.2/java-rest-high-query-builders.html)提供了所有可用搜索查询的列表及其相应的QueryBuilder对象和QueryBuilders辅助方法。
+
+
+1.4. 指定排序
+
+SearchSourceBuilder 允许添加一个或多个SortBuilder实例。有四个可以指定的实现（Field-， Score-， GeoDistance- and ScriptSortBuilder）。
+
+```java
+//按_score降序排序（默认值）
+sourceBuilder.sort(new ScoreSortBuilder().order(SortOrder.DESC)); 
+//还可以按_id字段进行升序排序
+sourceBuilder.sort(new FieldSortBuilder("_id").order(SortOrder.ASC));
+```
+
+1.5. 源过滤
+
+默认情况下，搜索请求会返回文档_source的内容，但在Rest API中，您可以覆盖此行为。 例如，您可以完全关闭_source检索：
+
+```java
+sourceBuilder.fetchSource(false);
+```
+
+该方法还接受一个或多个通配符模式的数组，以更精细的方式控制包含或排除哪些字段：
+
+```java
+String[] includeFields = new String[] {"title", "innerObject.*"};
+String[] excludeFields = new String[] {"user"};
+sourceBuilder.fetchSource(includeFields, excludeFields);
+```
+1.6. 请求高亮
+
+通过在SearchSourceBuilder上设置HighlightBuilder，可以突出显示搜索结果。 通过将一个或多个HighlightBuilder.Field实例添加到HighlightBuilder，
+可以为每个字段定义不同的突出显示行为。
+
+```java
+
+SearchSourceBuilder searchSourceBuilder = new SearchSourceBuilder();
+HighlightBuilder highlightBuilder = new HighlightBuilder(); 
+HighlightBuilder.Field highlightTitle =
+        new HighlightBuilder.Field("title"); 
+//设置字段高亮类型
+highlightTitle.highlighterType("unified");  
+highlightBuilder.field(highlightTitle);  
+HighlightBuilder.Field highlightUser = new HighlightBuilder.Field("user");
+highlightBuilder.field(highlightUser);
+searchSourceBuilder.highlighter(highlightBuilder);
+```
+Rest API文档中有许多选项需要详细说明。 Rest API参数（例如pre_tags）通常由具有相似名称的setter（例如#preTags（String ...））更改。
+
+稍后可以从SearchResponse中检索突出显示的文本片段。
+
+
+1.7. 请求聚合
+
+首先通过创建适当的AggregationBuilder，然后在SearchSourceBuilder上设置聚合，可以将聚合添加到搜索中。 在以下示例中，我们使用公司员工平均年龄的
+子聚合创建公司名称的术语聚合：
+
+```java
+Aggregations aggregations = searchResponse.getAggregations();
+//Get the by_company terms aggregation
+Terms byCompanyAggregation = aggregations.get("by_company"); 
+//Get the buckets that is keyed with Elastic
+Bucket elasticBucket = byCompanyAggregation.getBucketByKey("Elastic"); 
+//Get the average_age sub-aggregation from that bucket
+Avg averageAge = elasticBucket.getAggregations().get("average_age"); 
+double avg = averageAge.getValue();
+```
+[Building Aggregations](https://www.elastic.co/guide/en/elasticsearch/client/java-rest/7.2/java-rest-high-aggregation-builders.html)页提供所有可用聚合的列表及其相应的AggregationBuilder对象和AggregationBuilder帮助器方法。
+
+稍后我们将了解如何[访问SearchResponse中的聚合](https://www.elastic.co/guide/en/elasticsearch/client/java-rest/7.2/java-rest-high-search.html#java-rest-high-search-response-aggs)。
+
+1.8. 请求建议
+
+要向搜索请求添加建议，请使用可从SuggestBuilders工厂类轻松访问的SuggestionBuilder实现之一。 需要将建议构建器添加到顶级SuggestBuilder，它本身
+可以在SearchSourceBuilder上设置。
+
+```java
+SearchSourceBuilder searchSourceBuilder = new SearchSourceBuilder();
+//Creates a new TermSuggestionBuilder for the user field and the text kmichy
+SuggestionBuilder termSuggestionBuilder =
+    SuggestBuilders.termSuggestion("user").text("kmichy"); 
+SuggestBuilder suggestBuilder = new SuggestBuilder();
+//Adds the suggestion builder and names it suggest_user
+suggestBuilder.addSuggestion("suggest_user", termSuggestionBuilder); 
+searchSourceBuilder.suggest(suggestBuilder);
+```
+稍后我们在SearchResponse可以看到检索建议
+
+
+1.9. Profiling Queries and Aggregations
+
+Profile API可用于分析特定搜索请求的查询和聚合的执行情况。 为了使用它，必须在SearchSourceBuilder上将profile标志设置为true：
+
+```java
+SearchSourceBuilder searchSourceBuilder = new SearchSourceBuilder();
+searchSourceBuilder.profile(true);
+```
+
+执行SearchRequest后，相应的SearchResponse将包含分析结果。
+
+
+
+2. 同步执行
+
+以下列方式执行SearchRequest时，客户端在继续执行代码之前等待返回SearchResponse：
+
+```java
+SearchResponse searchResponse = client.search(searchRequest, RequestOptions.DEFAULT);
+
+```
+
+如果无法解析高级REST客户端中的REST响应，请求超时或类似情况没有从服务器返回响应，则同步调用可能会抛出IOException。
+
+如果服务器返回4xx或5xx错误代码，则高级客户端会尝试解析响应正文错误详细信息，然后抛出通用ElasticsearchException并将原始ResponseException作为
+抑制异常添加到其中。
+
+3. 异步执行
+
+执行SearchRequest也可以以异步方式完成，以便客户端可以直接返回。 用户需要通过将请求和监听器传递给异步搜索方法来指定响应或潜在故障的处理方式：
+
+```java
+client.searchAsync(searchRequest, RequestOptions.DEFAULT, listener);
+```
+异步方法不会阻塞并立即返回。 一旦完成，如果执行成功完成，则使用onResponse方法回调ActionListener，如果失败则使用onFailure方法。 故障情形和预期
+异常与同步执行情况相同。
+
+典型的搜索监听器如下所示：
+
+```java
+ActionListener<SearchResponse> listener = new ActionListener<SearchResponse>() {
+    @Override
+    public void onResponse(SearchResponse searchResponse) {
+        
+    }
+
+    @Override
+    public void onFailure(Exception e) {
+        
+    }
+};
+
+```
+4. SearchResponse
+
+通过执行搜索返回的SearchResponse提供有关搜索执行本身以及对返回文档的访问的详细信息。 首先，有关于请求执行本身的有用信息，例如HTTP状态代码，执行时
+间或请求是提前终止还是超时：
+
+```java
+RestStatus status = searchResponse.status();
+TimeValue took = searchResponse.getTook();
+Boolean terminatedEarly = searchResponse.isTerminatedEarly();
+boolean timedOut = searchResponse.isTimedOut();
+```
+
+其次，响应还通过提供有关搜索影响的分片总数以及成功与不成功分片的统计信息，提供有关分片级别执行的信息。 可以通过在ShardSearchFailures上迭代数组来处
+理可能的失败，如下例所示：
+
+```java
+int totalShards = searchResponse.getTotalShards();
+int successfulShards = searchResponse.getSuccessfulShards();
+int failedShards = searchResponse.getFailedShards();
+for (ShardSearchFailure failure : searchResponse.getShardFailures()) {
+    // failures should be handled here
+}
+
+```
+
+
+
+4.1. Retrieving SearchHits
+
+要访问返回的文档，我们需要首先获取响应中包含的SearchHits：
+
+```java
+SearchHits hits = searchResponse.getHits();
+```
+
+SearchHits提供有关所有匹配的全局信息，例如总命中数或最高分数：
+
+```java
+TotalHits totalHits = hits.getTotalHits();
+// the total number of hits, must be interpreted in the context of totalHits.relation
+long numHits = totalHits.value;
+// whether the number of hits is accurate (EQUAL_TO) or a lower bound of the total (GREATER_THAN_OR_EQUAL_TO)
+TotalHits.Relation relation = totalHits.relation;
+float maxScore = hits.getMaxScore();
+```
+
+嵌套在SearchHits中的是可以迭代的单个搜索结果：
+
+```java
+SearchHit[] searchHits = hits.getHits();
+for (SearchHit hit : searchHits) {
+    // do something with the SearchHit
+}
+```
+SearchHit提供对索引，文档ID和每个搜索命中得分等基本信息的访问：
+```java
+String index = hit.getIndex();
+String id = hit.getId();
+float score = hit.getScore();
+```
+此外，它还允许您以简单的JSON-String或键/值对的映射形式返回文档源。 在此映射中，常规字段由字段名称键控并包含字段值。 多值字段作为对象列表返回，嵌套
+对象作为另一个键/值映射返回。 这些案件需要相应地进行投射：
+
+```java
+String sourceAsString = hit.getSourceAsString();
+Map<String, Object> sourceAsMap = hit.getSourceAsMap();
+String documentTitle = (String) sourceAsMap.get("title");
+List<Object> users = (List<Object>) sourceAsMap.get("user");
+Map<String, Object> innerObject =
+        (Map<String, Object>) sourceAsMap.get("innerObject");
+```
+
+4.2. Retrieving Highlighting
+
+如果需要，可以从结果中的每个SearchHit检索突出显示的文本片段。 命中对象提供对HighlightField实例的字段名称映射的访问，每个实例包含一个或多个突出显
+示的文本片段：
+
+```java
+SearchHits hits = searchResponse.getHits();
+for (SearchHit hit : hits.getHits()) {
+    Map<String, HighlightField> highlightFields = hit.getHighlightFields();
+    //Get the highlighting for the title field
+    HighlightField highlight = highlightFields.get("title"); 
+    //Get one or many fragments containing the highlighted field content
+    Text[] fragments = highlight.fragments();  
+    String fragmentString = fragments[0].string();
+}
+```
+
+4.3. Retrieving Aggregations
+
+首先通过获取聚合树的根，Aggregations对象，然后按名称获取聚合，可以从SearchResponse检索聚合。
+
+```java
+Aggregations aggregations = searchResponse.getAggregations();
+//Get the by_company terms aggregation
+Terms byCompanyAggregation = aggregations.get("by_company"); 
+//Get the buckets that is keyed with Elastic
+Bucket elasticBucket = byCompanyAggregation.getBucketByKey("Elastic");
+//Get the average_age sub-aggregation from that bucket
+Avg averageAge = elasticBucket.getAggregations().get("average_age"); 
+double avg = averageAge.getValue();
+```
+请注意，如果按名称访问聚合，则需要根据所请求的聚合类型指定聚合接口，否则将引发ClassCastException：
+
+```java
+//这将引发异常，因为“by_company”是一个术语聚合，但我们尝试将其作为范围聚合进行检索
+Range range = aggregations.get("by_company"); 
+```
+
+还可以将所有聚合作为由聚合名称键入的映射进行访问。 在这种情况下，需要显式地进行正确聚合接口的转换：
+
+```java
+Map<String, Aggregation> aggregationMap = aggregations.getAsMap();
+Terms companyAggregation = (Terms) aggregationMap.get("by_company");
+```
+
+还有一些getter将所有顶级聚合作为列表返回：
+
+```java
+List<Aggregation> aggregationList = aggregations.asList();
+```
+最后，但并非最不重要的是，您可以对所有聚合进行迭代，然后根据它们的类型决定如何进一步处理它们：
+
+```java
+for (Aggregation agg : aggregations) {
+    String type = agg.getType();
+    if (type.equals(TermsAggregationBuilder.NAME)) {
+        Bucket elasticBucket = ((Terms) agg).getBucketByKey("Elastic");
+        long numberOfDocs = elasticBucket.getDocCount();
+    }
+}
+```
+
+4.4. Retrieving Suggestions
+
+要从SearchResponse获取建议，请使用Suggest对象作为入口点，然后检索嵌套的建议对象：
+
+```java
+//Use the Suggest class to access suggestions
+Suggest suggest = searchResponse.getSuggest(); 
+//Suggestions can be retrieved by name. You need to assign them to the correct type of Suggestion 
+// class (here TermSuggestion), otherwise a ClassCastException is thrown
+TermSuggestion termSuggestion = suggest.getSuggestion("suggest_user"); 
+//Iterate over the suggestion entries
+for (TermSuggestion.Entry entry : termSuggestion.getEntries()) { 
+    //Iterate over the options in one entry
+    for (TermSuggestion.Entry.Option option : entry) { 
+        String suggestText = option.getText().string();
+    }
+}
+```
+
+4.5. 检索分析结果
+
+使用getProfileResults（）方法从SearchResponse检索分析结果。 此方法返回包含SearchSquest执行中涉及的每个分片的ProfileShardResult对象的Map。 
+ProfileShardResult使用一个键存储在Map中，该键唯一标识配置文件结果对应的分片。
+
+下面是一个示例代码，显示如何迭代每个分片的所有分析结果：
+
+```java
+//Retrieve the Map of ProfileShardResult from the SearchResponse
+Map<String, ProfileShardResult> profilingResults =
+        searchResponse.getProfileResults(); 
+/*
+* Profiling results can be retrieved by shard’s key if the key is known, otherwise it might be simpler to iterate over 
+* all the profiling results
+*/
+/
+for (Map.Entry<String, ProfileShardResult> profilingResult : profilingResults.entrySet()) { 
+    //Retrieve the key that identifies which shard the ProfileShardResult belongs to
+    String key = profilingResult.getKey(); 
+    //Retrieve the ProfileShardResult for the given shard
+    ProfileShardResult profileShardResult = profilingResult.getValue(); 
+}
+```
+
+ProfileShardResult对象本身包含一个或多个查询概要文件结果，每个结果对应于基础Lucene索引执行的每个查询：
+
+```java
+//Retrieve the list of QueryProfileShardResult
+List<QueryProfileShardResult> queryProfileShardResults =
+        profileShardResult.getQueryProfileResults(); 
+//Iterate over each QueryProfileShardResult
+for (QueryProfileShardResult queryProfileResult : queryProfileShardResults) { 
+
+}
+```
+
+每个QueryProfileShardResult都提供对详细查询树执行的访问权限，作为ProfileResult对象列表返回：
+
+```java
+//Iterate over the profile results
+for (ProfileResult profileResult : queryProfileResult.getQueryResults()) { 
+    //Retrieve the name of the Lucene query
+    String queryName = profileResult.getQueryName();
+    //Retrieve the time in millis spent executing the Lucene query
+    long queryTimeInMillis = profileResult.getTime(); 
+    //Retrieve the profile results for the sub-queries (if any)
+    List<ProfileResult> profiledChildren = profileResult.getProfiledChildren(); 
+}
+```
+Rest API文档包含有关分析查询的更多信息以及查询分析信息的描述。
+
+QueryProfileShardResult还可以访问Lucene收集器的分析信息：
+
+```java
+//Retrieve the profiling result of the Lucene collector
+CollectorResult collectorResult = queryProfileResult.getCollectorResult(); 
+//Retrieve the name of the Lucene collector
+String collectorName = collectorResult.getName(); 
+//Retrieve the time in millis spent executing the Lucene collector
+Long collectorTimeInMillis = collectorResult.getTime(); 
+//Retrieve the profile results for the sub-collectors (if any)
+List<CollectorResult> profiledChildren = collectorResult.getProfiledChildren();
+```
+
+Rest API文档包含有关Lucene收集器的分析信息的更多信息。 请参阅分析查询。
+
+以与查询树执行非常类似的方式，QueryProfileShardResult对象可以访问详细的聚合树执行：
+
+```java
+//Retrieve the AggregationProfileShardResult
+AggregationProfileShardResult aggsProfileResults =
+        profileShardResult.getAggregationProfileResults(); 
+//Iterate over the aggregation profile results
+for (ProfileResult profileResult : aggsProfileResults.getProfileResults()) { 
+    //Retrieve the type of the aggregation (corresponds to Java class used to execute the aggregation)
+    String aggName = profileResult.getQueryName(); 
+    //Retrieve the time in millis spent executing the Lucene collector
+    long aggTimeInMillis = profileResult.getTime(); 
+    //Retrieve the profile results for the sub-aggregations (if any)
+    List<ProfileResult> profiledChildren = profileResult.getProfiledChildren(); 
+}
+```
+Rest API文档包含有关[分析聚合](https://www.elastic.co/guide/en/elasticsearch/reference/7.2/search-profile-aggregations.html)的更多信息。
+
+
+3.2. Search Scroll API
+
+3.3. Clear Scroll API
+
+3.4. Multi-Search API
+
+3.5. Search Template API
+
+3.6. Multi-Search-Template API
+
+3.7. Field Capabilities API
+
+3.8. Ranking Evaluation API
+
+3.9. Explain API
+
+3.10. Count API
+
 ### 4. Miscellaneous APIs
 ### 5. Indices APIs
+5.1. Analyze API
+5.2. Create Index API
+5.3. Delete Index API
+5.4. Indices Exists API
