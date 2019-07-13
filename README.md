@@ -2407,6 +2407,198 @@ int released = response.getNumFreed();
 ### 4. Miscellaneous APIs
 ### 5. Indices APIs
 5.1. Analyze API
+
+1. Analyze Request
+
+AnalyzeRequest包含要分析的文本，以及指定应如何执行分析的若干选项之一。
+
+最简单的版本使用内置分析器：
+
+```java
+AnalyzeRequest request = new AnalyzeRequest();
+//he text to include. Multiple strings are treated as a multi-valued field
+request.text("Some text to analyze", "Some more text to analyze"); 
+//A built-in analyzer
+request.analyzer("english");    
+```
+
+您可以配置自定义分析器：
+
+```java
+AnalyzeRequest request = new AnalyzeRequest();
+request.text("<b>Some text to analyze</b>");
+//Configure char filters
+request.addCharFilter("html_strip"); 
+//Configure the tokenizer
+request.tokenizer("standard");
+//Add a built-in tokenfilter
+request.addTokenFilter("lowercase");                
+
+Map<String, Object> stopFilter = new HashMap<>();
+stopFilter.put("type", "stop");
+//Configuration for a custom tokenfilter
+stopFilter.put("stopwords", new String[]{ "to" });  
+//Add the custom tokenfilter
+request.addTokenFilter(stopFilter);                
+```
+您还可以通过仅包含charfilters和tokenfilters来构建自定义规范化器：
+
+```java
+AnalyzeRequest request = new AnalyzeRequest();
+request.text("<b>BaR</b>");
+request.addTokenFilter("lowercase");
+```
+
+您可以使用现有索引中定义的分析器分析文本：
+
+```java
+AnalyzeRequest request = new AnalyzeRequest();
+//索引包含的映射
+request.index("my_index"); 
+//分析器在此索引上定义使用
+request.analyzer("my_analyzer");        
+request.text("some text to analyze");
+```
+
+或者你可以使用normalizer：
+
+```java
+AnalyzeRequest request = new AnalyzeRequest();
+//The index containing the mappings
+request.index("my_index"); 
+//The normalizer defined on this index to use
+request.normalizer("my_normalizer");        
+request.text("some text to analyze");
+```
+您可以使用索引中特定字段的映射来分析文本：
+
+```java
+AnalyzeRequest request = new AnalyzeRequest();
+request.index("my_index");
+request.field("my_field");
+request.text("some text to analyze");
+```
+
+2. 可选参数
+
+提供以下可选参数：
+
+```java
+//将explain设置为true将为响应添加更多详细信息
+request.explain(true);  
+//设置属性允许您仅返回您感兴趣的令牌属性
+request.attributes("keyword", "type");
+```
+
+3. 同步执行
+
+以下列方式执行AnalyzeRequest时，客户端在继续执行代码之前等待返回AnalyzeResponse：
+
+```java
+AnalyzeResponse response = client.indices().analyze(request, RequestOptions.DEFAULT);
+
+```
+
+如果无法解析高级REST客户端中的REST响应，请求超时或类似情况没有从服务器返回响应，则同步调用可能会抛出IOException。
+
+如果服务器返回4xx或5xx错误代码，则高级客户端会尝试解析响应正文错误详细信息，然后抛出通用ElasticsearchException并将原始ResponseException作为
+抑制异常添加到其中。
+
+4. 异步执行
+
+执行AnalyzeRequest也可以以异步方式完成，以便客户端可以直接返回。 用户需要通过将请求和侦听器传递给异步分析方法来指定响应或潜在故障的处理方式：
+
+```java
+client.indices().analyzeAsync(request, RequestOptions.DEFAULT, listener);
+```
+
+异步方法不会阻塞并立即返回。 一旦完成，如果执行成功完成，则使用onResponse方法回调ActionListener，如果失败则使用onFailure方法。 故障情形和预期
+异常与同步执行情况相同。
+
+典型的分析监听器如下所示：
+
+```java
+ActionListener<AnalyzeResponse> listener = new ActionListener<AnalyzeResponse>() {
+    @Override
+    public void onResponse(AnalyzeResponse analyzeTokens) {
+        
+    }
+
+    @Override
+    public void onFailure(Exception e) {
+        
+    }
+};
+```
+
+5. Analyze Response
+
+返回的AnalyzeResponse允许您检索分析的详细信息，如下所示：
+```java
+//AnalyzeToken保存有关通过分析生成的各个令牌的信息
+List<AnalyzeResponse.AnalyzeToken> tokens = response.getTokens(); 
+```
+如果explain设置为true，那么将从detail（）方法返回信息：
+
+```java
+//DetailAnalyzeResponse包含有关分析链中各个子步骤生成的令牌的更多详细信息。
+DetailAnalyzeResponse detail = response.detail();  
+```
+
+
+
 5.2. Create Index API
 5.3. Delete Index API
 5.4. Indices Exists API
+
+5.5. Open Index API
+
+5.6. Close Index API
+
+5.7. Shrink Index API
+
+5.8. Split Index API
+
+5.9. Refresh API
+
+5.10. Flush API
+
+5.11. Flush Synced API
+
+5.12. Clear Cache API
+
+5.13. Force Merge API
+
+5.14. Rollover Index API
+
+5.15. Put Mapping API
+
+5.16. Get Mapping API
+
+5.17. Get Field Mappings API
+
+5.18. Index Aliases API
+
+5.19. Exists Alias API
+
+5.20. Get Alias API
+
+5.21. Update Indices Settings API
+
+5.22. Get Setting API
+
+5.23. Put Template API
+
+5.24. Validate Query API
+
+5.25. Get Template API
+
+5.26. Templates Exist API
+
+5.27. Get Index API
+
+5.28. Freeze Index API
+
+5.29. Unfreeze Index API
+
+5.30. Delete Template API
