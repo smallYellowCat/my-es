@@ -2181,6 +2181,138 @@ Rest API文档包含有关[分析聚合](https://www.elastic.co/guide/en/elastic
 
 3.2. Search Scroll API
 
+Scroll API可用于从搜索请求中检索大量结果。
+
+为了使用滚动，需要按给定顺序执行以下步骤。
+
+1. 初始化搜索滚动contextedit
+
+必须执行带有滚动参数的初始搜索请求，以通过Search API初始化滚动会话。 处理此SearchRequest时，Elasticsearch检测到滚动参数的存在，并使搜索上下文
+保持活动状态达到相应的时间间隔。
+
+```java
+SearchRequest searchRequest = new SearchRequest("posts");
+SearchSourceBuilder searchSourceBuilder = new SearchSourceBuilder();
+searchSourceBuilder.query(matchQuery("title", "Elasticsearch"));
+//创建SearchRequest及其相应的SearchSourceBuilder。 还可以选择设置大小以控制一次检索多少结果。
+searchSourceBuilder.size(size); 
+searchRequest.source(searchSourceBuilder);
+//设置滚动间隔
+searchRequest.scroll(TimeValue.timeValueMinutes(1L)); 
+SearchResponse searchResponse = client.search(searchRequest, RequestOptions.DEFAULT);
+//读取返回的滚动ID，该ID指向保持活动的搜索上下文，并在以下搜索滚动调用中需要
+String scrollId = searchResponse.getScrollId();
+//检索第一批搜索命中
+SearchHits hits = searchResponse.getHits();  
+```
+2.检索所有相关文档
+
+第二步，必须将收到的滚动标识符设置为SearchScrollRequest以及新的滚动间隔，并通过searchScroll方法发送。 Elasticsearch使用新的滚动标识符返回另
+一批结果。 然后，可以在随后的SearchScrollRequest中使用此新的滚动标识符来检索下一批结果，依此类推。 这个过程应该循环重复，直到不再返回结果，这意味
+着滚动已经用尽并且已经检索了所有匹配的文档。
+
+```java
+//通过设置所需的滚动ID和滚动间隔来创建SearchScrollRequest
+SearchScrollRequest scrollRequest = new SearchScrollRequest(scrollId); 
+scrollRequest.scroll(TimeValue.timeValueSeconds(30));
+SearchResponse searchScrollResponse = client.scroll(scrollRequest, RequestOptions.DEFAULT);
+//读取新的滚动ID，该ID指向保持活动的搜索上下文，并在下面的搜索滚动调用中需要
+scrollId = searchScrollResponse.getScrollId(); 
+//检索另一批搜索命中<4>
+hits = searchScrollResponse.getHits(); 
+assertEquals(3, hits.getTotalHits().value);
+assertEquals(1, hits.getHits().length);
+assertNotNull(scrollId);
+```
+
+3.清除滚动上下文
+  最后，可以使用Clear Scroll API删除最后一个滚动标识符，以释放搜索上下文。 滚动到期时会自动发生这种情况，但滚动会话完成后立即执行此操作是很好的做法。
+  
+4.可选参数
+  构造SearchScrollRequest时，可以选择提供以下参数：
+```java
+//Scroll interval as a TimeValue
+scrollRequest.scroll(TimeValue.timeValueSeconds(60L));
+//Scroll interval as a String
+scrollRequest.scroll("60s"); 
+```
+如果没有为SearchScrollRequest设置滚动值，则一旦初始滚动时间到期（即，在初始搜索请求中设置的滚动时间），搜索上下文将到期。
+
+
+5. 同步执行
+
+```java
+SearchResponse searchResponse = client.scroll(scrollRequest, RequestOptions.DEFAULT);
+```
+
+6. 异步执行
+
+搜索滚动请求的异步执行需要将SearchScrollRequest实例和ActionListener实例传递给异步方法：
+
+```java
+//要执行的SearchScrollRequest和执行完成时要使用的ActionListener
+client.scrollAsync(scrollRequest, RequestOptions.DEFAULT, scrollListener); 
+```
+
+异步方法不会阻塞并立即返回。 一旦完成，如果执行成功完成，则使用onResponse方法回调ActionListener，如果失败则使用onFailure方法。
+
+SearchResponse的典型监听器如下所示：
+
+```java
+ActionListener<SearchResponse> scrollListener =
+        new ActionListener<SearchResponse>() {
+    @Override
+    public void onResponse(SearchResponse searchResponse) {
+        
+    }
+
+    @Override
+    public void onFailure(Exception e) {
+        
+    }
+};
+```
+
+7. Response
+
+搜索滚动API返回SearchResponse对象，与Search API相同。
+
+8. 完整示例
+
+以下是滚动搜索的完整示例。
+
+```java
+final Scroll scroll = new Scroll(TimeValue.timeValueMinutes(1L));
+SearchRequest searchRequest = new SearchRequest("posts");
+searchRequest.scroll(scroll);
+SearchSourceBuilder searchSourceBuilder = new SearchSourceBuilder();
+searchSourceBuilder.query(matchQuery("title", "Elasticsearch"));
+searchRequest.source(searchSourceBuilder);
+
+//通过发送初始SearchRequest初始化搜索上下文
+SearchResponse searchResponse = client.search(searchRequest, RequestOptions.DEFAULT); 
+String scrollId = searchResponse.getScrollId();
+SearchHit[] searchHits = searchResponse.getHits().getHits();
+
+//通过循环调用Search Scroll api检索所有搜索命中，直到不返回任何文档
+while (searchHits != null && searchHits.length > 0) { 
+    
+    //处理返回的搜索结果
+    //创建一个新的SearchScrollRequest，保存最后返回的滚动标识符和滚动间隔
+    SearchScrollRequest scrollRequest = new SearchScrollRequest(scrollId); 
+    scrollRequest.scroll(scroll);
+    searchResponse = client.scroll(scrollRequest, RequestOptions.DEFAULT);
+    scrollId = searchResponse.getScrollId();
+    searchHits = searchResponse.getHits().getHits();
+}
+
+//滚动完成后清除滚动上下文
+ClearScrollRequest clearScrollRequest = new ClearScrollRequest(); 
+clearScrollRequest.addScrollId(scrollId);
+ClearScrollResponse clearScrollResponse = client.clearScroll(clearScrollRequest, RequestOptions.DEFAULT);
+boolean succeeded = clearScrollResponse.isSucceeded();
+```
+
 3.3. Clear Scroll API
 
 3.4. Multi-Search API
