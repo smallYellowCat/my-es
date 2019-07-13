@@ -2548,6 +2548,175 @@ DetailAnalyzeResponse detail = response.detail();
 
 
 5.2. Create Index API
+
+1. Create Index Request
+
+CreateIndexRequest 需要一个Index参数：
+
+```java
+//要创建的索引
+CreateIndexRequest request = new CreateIndexRequest("twitter");
+```
+
+2. Index settings
+
+
+每个索引可以和指定设置关联创建：
+
+```java
+//此索引的设置
+request.settings(Settings.builder() 
+    .put("index.number_of_shards", 3)
+    .put("index.number_of_replicas", 2)
+);
+```
+
+3. Index mappings
+
+可以使用其文档类型的映射创建索引
+
+```java
+//定义类型
+request.mapping(
+        "{\n" +
+        "  \"properties\": {\n" +
+        "    \"message\": {\n" +
+        "      \"type\": \"text\"\n" +
+        "    }\n" +
+        "  }\n" +
+        "}", //此类型的映射，以json字符串的形式提供
+        XContentType.JSON);
+```
+除了上面显示的String示例之外，还可以以不同的方式提供映射源：
+
+
+映射源作为Map提供，自动转换为JSON格式
+```java
+Map<String, Object> message = new HashMap<>();
+message.put("type", "text");
+Map<String, Object> properties = new HashMap<>();
+properties.put("message", message);
+Map<String, Object> mapping = new HashMap<>();
+mapping.put("properties", properties);
+//
+request.mapping(mapping); 
+```
+
+映射源作为XContentBuilder对象提供，Elasticsearch内置帮助器生成JSON内容
+
+```java
+XContentBuilder builder = XContentFactory.jsonBuilder();
+builder.startObject();
+{
+    builder.startObject("properties");
+    {
+        builder.startObject("message");
+        {
+            builder.field("type", "text");
+        }
+        builder.endObject();
+    }
+    builder.endObject();
+}
+builder.endObject();
+request.mapping(builder); 
+```
+
+4.索引别名
+
+别名可以再索引创建时设置
+
+```java
+request.alias(new Alias("twitter_alias").filter(QueryBuilders.termQuery("user", "kimchy")));
+```
+
+5. 提供完整数据源
+
+还可以提供包括其所有部分（映射，设置和别名）的整个源代码：
+
+```java
+//The source provided as a JSON string. It can also be provided as a Map or an XContentBuilder.
+request.source("{\n" +
+        "    \"settings\" : {\n" +
+        "        \"number_of_shards\" : 1,\n" +
+        "        \"number_of_replicas\" : 0\n" +
+        "    },\n" +
+        "    \"mappings\" : {\n" +
+        "        \"properties\" : {\n" +
+        "            \"message\" : { \"type\" : \"text\" }\n" +
+        "        }\n" +
+        "    },\n" +
+        "    \"aliases\" : {\n" +
+        "        \"twitter_alias\" : {}\n" +
+        "    }\n" +
+        "}", XContentType.JSON); 
+```
+
+6. 可选参数
+
+提供以下可选参数：
+
+```java
+//所有节点确认索引创建的超时时间
+request.setTimeout(TimeValue.timeValueMinutes(2));
+//连接到主节点的超时时间
+request.setMasterTimeout(TimeValue.timeValueMinutes(1));
+//在创建索引API返回响应之前要等待的活动分片副本数
+request.waitForActiveShards(ActiveShardCount.from(2)); 
+request.waitForActiveShards(ActiveShardCount.DEFAULT);
+```
+
+7. 同步执行
+
+以下列方式执行CreateIndexRequest时，客户端在继续执行代码之前等待返回CreateIndexResponse：
+```java
+CreateIndexResponse createIndexResponse = client.indices().create(request, RequestOptions.DEFAULT);
+```
+
+如果无法解析高级REST客户端中的REST响应，请求超时或类似情况没有从服务器返回响应，则同步调用可能会抛出IOException。
+
+如果服务器返回4xx或5xx错误代码，则高级客户端会尝试解析响应正文错误详细信息，然后抛出通用ElasticsearchException并将原始ResponseException作为
+抑制异常添加到其中。
+
+8. 异步执行
+
+执行CreateIndexRequest也可以以异步方式完成，以便客户端可以直接返回。 用户需要通过将请求和侦听器传递给异步create-index方法来指定响应或潜在故障的
+处理方式：
+```java
+client.indices().createAsync(request, RequestOptions.DEFAULT, listener);
+```
+
+异步方法不会阻塞并立即返回。 一旦完成，如果执行成功完成，则使用onResponse方法回调ActionListener，如果失败则使用onFailure方法。 故障情形和预期
+异常与同步执行情况相同。
+
+create-index的典型侦听器如下所示：
+
+```java
+ActionListener<CreateIndexResponse> listener =
+        new ActionListener<CreateIndexResponse>() {
+
+    @Override
+    public void onResponse(CreateIndexResponse createIndexResponse) {
+        
+    }
+
+    @Override
+    public void onFailure(Exception e) {
+        
+    }
+};
+```
+
+9. 创建索引的响应
+
+返回的CreateIndexResponse允许检索有关已执行操作的信息，如下所示：
+```java
+//指示是否所有节点都已确认请求
+boolean acknowledged = createIndexResponse.isAcknowledged(); 
+//指示在超时之前是否为索引中的每个分片启动了必需数量的分片副本
+boolean shardsAcknowledged = createIndexResponse.isShardsAcknowledged(); 
+```
+
 5.3. Delete Index API
 5.4. Indices Exists API
 
