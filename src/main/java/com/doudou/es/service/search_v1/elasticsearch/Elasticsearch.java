@@ -2,23 +2,39 @@ package com.doudou.es.service.search_v1.elasticsearch;
 
 import lombok.NoArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
 import org.apache.http.HttpHost;
+import org.elasticsearch.action.ActionListener;
+import org.elasticsearch.action.admin.indices.alias.IndicesAliasesRequest;
+import org.elasticsearch.action.admin.indices.alias.IndicesAliasesRequest.AliasActions;
+import org.elasticsearch.action.admin.indices.alias.IndicesAliasesRequest.AliasActions.Type;
+import org.elasticsearch.action.admin.indices.alias.get.GetAliasesRequest;
+import org.elasticsearch.action.admin.indices.create.CreateIndexRequest;
+import org.elasticsearch.action.admin.indices.create.CreateIndexResponse;
+import org.elasticsearch.action.admin.indices.delete.DeleteIndexRequest;
+import org.elasticsearch.action.admin.indices.get.GetIndexRequest;
+import org.elasticsearch.action.admin.indices.get.GetIndexResponse;
+import org.elasticsearch.action.admin.indices.mapping.put.PutMappingRequest;
 import org.elasticsearch.action.admin.indices.refresh.RefreshRequest;
 import org.elasticsearch.action.delete.DeleteRequest;
 import org.elasticsearch.action.get.GetRequest;
 import org.elasticsearch.action.get.GetResponse;
 import org.elasticsearch.action.index.IndexRequest;
 import org.elasticsearch.action.search.SearchRequest;
+import org.elasticsearch.action.search.SearchResponse;
+import org.elasticsearch.action.search.SearchType;
+import org.elasticsearch.action.support.master.AcknowledgedResponse;
 import org.elasticsearch.action.update.UpdateRequest;
-import org.elasticsearch.client.IndicesAdminClient;
-import org.elasticsearch.client.RequestOptions;
-import org.elasticsearch.client.RestClient;
-import org.elasticsearch.client.RestHighLevelClient;
+import org.elasticsearch.client.*;
+import org.elasticsearch.cluster.metadata.AliasMetaData;
 import org.elasticsearch.common.settings.Settings;
 import org.elasticsearch.common.unit.TimeValue;
+import org.elasticsearch.common.xcontent.XContentType;
 import org.elasticsearch.index.query.QueryBuilder;
 import org.elasticsearch.index.reindex.DeleteByQueryRequest;
-import org.elasticsearch.index.reindex.DeleteByQueryRequestBuilder;
+import org.elasticsearch.search.SearchHit;
+import org.elasticsearch.search.builder.SearchSourceBuilder;
+import org.elasticsearch.search.fetch.subphase.highlight.HighlightBuilder;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
@@ -27,6 +43,7 @@ import javax.annotation.PostConstruct;
 import javax.annotation.PreDestroy;
 import java.io.IOException;
 import java.net.UnknownHostException;
+import java.util.*;
 import java.util.concurrent.*;
 
 /**
@@ -43,7 +60,7 @@ public class Elasticsearch {
     private int capacity;
     private Node[] table;
     private RestHighLevelClient client;
-    private IndicesAdminClient indicesAdminClient;
+    private IndicesClient indicesClient;
 
     public Elasticsearch(String clusterName, String clusterNodes, int concurrency){
         capacity = tableSizeFor(concurrency);
@@ -61,6 +78,7 @@ public class Elasticsearch {
                 .put("", true)
                 .build();
         client = new RestHighLevelClient(RestClient.builder(hosts));
+        indicesClient = client.indices();
         //indicesAdminClient = client.indices();
         //Sniffer sniffer = Sniffer.builder(client).build();
         //indicesAdminClient = client.
@@ -130,10 +148,259 @@ public class Elasticsearch {
         request.indices(index);
 
 
-        client.deleteByQuery()
+        //client.deleteByQuery()
+    }
+
+    /**
+     *
+     * @param alias
+     * @return
+     * @throws IOException
+     */
+    public List<String> getIndexByAlias(String alias) throws IOException {
+        GetAliasesRequest getAliasesRequest = new GetAliasesRequest()
+                .aliases(alias);
+        GetAliasesResponse response = client.indices().getAlias(getAliasesRequest, RequestOptions.DEFAULT);
+        Map<String, Set<AliasMetaData>> map = new HashMap<>(response.getAliases());
+
+        List<String> indices = new ArrayList<>(map.size());
+        map.forEach((k, v) -> indices.add(k));
+        return indices;
+
     }
 
 
+    /**
+     * get all indices
+     * @return
+     * @throws IOException
+     */
+    public List<String> getIndices() throws IOException {
+        GetIndexRequest request = new GetIndexRequest();
+        GetIndexResponse response = client.indices().get(request, RequestOptions.DEFAULT);
+        return Arrays.asList(response.getIndices());
+    }
+
+
+    /**
+     * async execute create index
+     * @param index
+     */
+    public void createIndex(String index) {
+        CreateIndexRequest request = new CreateIndexRequest(index);
+        client.indices().createAsync(request, RequestOptions.DEFAULT, new ActionListener<CreateIndexResponse>() {
+
+            @Override
+            public void onResponse(CreateIndexResponse createIndexResponse) {
+                log.info("create index : " + index + "successfully, waiting for all of the nodes  acknowledge the request");
+            }
+
+            @Override
+            public void onFailure(Exception e) {
+                log.error("create index : " + index + " occurred exception " + e, e);
+            }
+        });
+    }
+
+    /**
+     *
+     * @param index
+     * @param mapping
+     */
+    public void createIndex(String index, String mapping){
+        log.info("create index " + index + " with mapping " + mapping);
+        CreateIndexRequest request = new CreateIndexRequest(index)
+                .source(mapping, XContentType.JSON);
+        client.indices().createAsync(request, RequestOptions.DEFAULT, new ActionListener<CreateIndexResponse>() {
+
+            @Override
+            public void onResponse(CreateIndexResponse createIndexResponse) {
+                log.info("create index : " + index + "successfully, waiting for all of the nodes  acknowledge the request");
+            }
+
+            @Override
+            public void onFailure(Exception e) {
+                log.error("create index : " + index + " occurred exception " + e, e);
+            }
+        });
+    }
+
+    /**
+     *
+     * @param index
+     * @param type
+     * @param mapping
+     */
+    public void putMapping(String index, String type, String mapping){
+        PutMappingRequest request = new PutMappingRequest(index)
+                .type(type).source(mapping, XContentType.JSON);
+        indicesClient.putMappingAsync(request, RequestOptions.DEFAULT, new ActionListener<AcknowledgedResponse>(){
+
+            @Override
+            public void onResponse(AcknowledgedResponse acknowledgedResponse) {
+                log.info("put mapping in index : " + index +  " , type : " + type + " , mapping : " + mapping
+                        + " successfully! ");
+            }
+
+
+            @Override
+            public void onFailure(Exception e) {
+                log.error("put mapping in index : " + index +  " , type : " + type + " , mapping : " + mapping
+                        + " occurred " + e, e);
+            }
+        });
+    }
+
+    /**
+     *
+     * @param alias
+     * @param index
+     */
+    public void createAlias(String alias, String index){
+        IndicesAliasesRequest request = new IndicesAliasesRequest();
+        AliasActions aliasActions = new AliasActions(Type.ADD)
+                .index(index).alias(alias);
+        request.addAliasAction(aliasActions);
+        indicesClient.updateAliasesAsync(request, RequestOptions.DEFAULT, new ActionListener<AcknowledgedResponse>() {
+            @Override
+            public void onResponse(AcknowledgedResponse acknowledgedResponse) {
+                log.info("add alias " + alias + " to index " + index + " successfully!");
+            }
+
+            @Override
+            public void onFailure(Exception e) {
+                log.error("add alias " + alias + " to index " + index + " occurred exception " + e, e);
+            }
+        });
+    }
+
+    /**
+     *
+     * @param alias
+     * @param index
+     * @param mapping
+     */
+    public void createIndex(String alias, String index, String mapping){
+        createIndex(index, mapping);
+        createIndex(alias, index);
+    }
+
+
+    /**
+     * delete index
+     * @param index
+     */
+    public void deleteIndex(String index){
+        DeleteIndexRequest request = new DeleteIndexRequest(index);
+        indicesClient.deleteAsync(request, RequestOptions.DEFAULT, new ActionListener<AcknowledgedResponse>() {
+            @Override
+            public void onResponse(AcknowledgedResponse acknowledgedResponse) {
+                log.info("delete index " + index + " successfully!");
+            }
+
+            @Override
+            public void onFailure(Exception e) {
+                log.error("delete index " + index + " occurred exception " + e, e);
+            }
+        });
+    }
+
+    /**
+     *
+     * @param index
+     * @param type
+     * @param from
+     * @param size
+     * @param queryBuilder
+     * @param highlightBuilder
+     * @return
+     * @throws IOException
+     */
+    public SearchResult searchWithPage(String index, String type, int from, int size,
+                                       QueryBuilder queryBuilder, HighlightBuilder highlightBuilder) throws IOException {
+        SearchRequest request = new SearchRequest(index)
+                .types(type)
+                .searchType(SearchType.DFS_QUERY_THEN_FETCH);
+        SearchSourceBuilder builder = new SearchSourceBuilder();
+        builder.query(queryBuilder);
+        builder.from(from);
+        builder.size(size);
+        if (null != highlightBuilder) {
+            builder.highlighter(highlightBuilder);
+        }
+
+        request.source(builder);
+
+        SearchResponse response = client.search(request, RequestOptions.DEFAULT);
+        List<Document> documents = responseToDocument(response);
+        SearchResult result = new SearchResult()
+                .setHits(response.getHits().getHits().length)
+                .setTotalHits(response.getHits().getTotalHits())
+                .setDocuments(documents);
+        return result;
+
+    }
+
+    /**
+     *
+     * @param query
+     * @return
+     * @throws IOException
+     */
+    public SearchResult search(Query query) throws IOException {
+        SearchRequest request = new SearchRequest(query.getIndex())
+                .types(query.getType())
+                .preference("_replica_first");
+        SearchSourceBuilder builder = new SearchSourceBuilder();
+        //if (!StringUtils.isEmpty(query.getIndex()))
+        //if (!StringUtils.isEmpty(query.getType()))
+        if (null != query.getFrom()) {
+            builder.from(query.getFrom());
+        }
+        if (null != query.getSize()){
+            builder.size(query.getSize());
+        }
+        if (null != query.getQueryBuilder()){
+            builder.query(query.getQueryBuilder());
+        }
+        if (null != query.getHighlightBuilder()){
+            builder.highlighter(query.getHighlightBuilder());
+        }
+        request.source(builder);
+
+        SearchResponse response = client.search(request, RequestOptions.DEFAULT);
+        List<Document> documents = responseToDocument(response);
+
+        SearchResult result = new SearchResult()
+                .setHits(response.getHits().getHits().length)
+                .setTotalHits(response.getHits().getTotalHits())
+                .setDocuments(documents);
+        return result;
+
+    }
+
+
+    /**
+     *
+     * @param response
+     * @return
+     */
+    private List<Document> responseToDocument(SearchResponse response){
+        List<Document> documents = new ArrayList<>();
+        for (SearchHit hit : response.getHits()){
+            Document document = new Document()
+                    .setId(hit.getId())
+                    .setIndex(hit.getIndex())
+                    .setType(hit.getType())
+                    .setExists(true)
+                    .setVersion(hit.getVersion())
+                    .setSource(hit.getSourceAsMap())
+                    .setScore(hit.getScore())
+                    .setHighlightFields(hit.getHighlightFields());
+            documents.add(document);
+        }
+        return documents;
+    }
 
 
     @PostConstruct
