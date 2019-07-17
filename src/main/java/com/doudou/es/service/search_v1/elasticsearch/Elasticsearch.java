@@ -31,7 +31,6 @@ import org.elasticsearch.common.settings.Settings;
 import org.elasticsearch.common.unit.TimeValue;
 import org.elasticsearch.common.xcontent.XContentType;
 import org.elasticsearch.index.query.QueryBuilder;
-import org.elasticsearch.index.reindex.DeleteByQueryRequest;
 import org.elasticsearch.search.SearchHit;
 import org.elasticsearch.search.builder.SearchSourceBuilder;
 import org.elasticsearch.search.fetch.subphase.highlight.HighlightBuilder;
@@ -73,16 +72,8 @@ public class Elasticsearch {
             hosts[i] = new HttpHost(tuple[0], Integer.valueOf(tuple[1]), "http");
         }
 
-        Settings settings = Settings.builder()
-                .put("cluster.name", clusterName)
-                .put("", true)
-                .build();
         client = new RestHighLevelClient(RestClient.builder(hosts));
         indicesClient = client.indices();
-        //indicesAdminClient = client.indices();
-        //Sniffer sniffer = Sniffer.builder(client).build();
-        //indicesAdminClient = client.
-
     }
 
     @Autowired
@@ -144,10 +135,6 @@ public class Elasticsearch {
     }
 
     public void deleteByQuery(String index, QueryBuilder queryBuilder){
-        DeleteByQueryRequest request = new DeleteByQueryRequest();
-        request.indices(index);
-
-
         //client.deleteByQuery()
     }
 
@@ -192,7 +179,7 @@ public class Elasticsearch {
 
             @Override
             public void onResponse(CreateIndexResponse createIndexResponse) {
-                log.info("create index : " + index + "successfully, waiting for all of the nodes  acknowledge the request");
+                log.info("create index : " + index + " successfully, waiting for all of the nodes  acknowledge the request");
             }
 
             @Override
@@ -215,7 +202,31 @@ public class Elasticsearch {
 
             @Override
             public void onResponse(CreateIndexResponse createIndexResponse) {
-                log.info("create index : " + index + "successfully, waiting for all of the nodes  acknowledge the request");
+                log.info("create index : " + index + " successfully, waiting for all of the nodes  acknowledge the request");
+            }
+
+            @Override
+            public void onFailure(Exception e) {
+                log.error("create index : " + index + " occurred exception " + e, e);
+            }
+        });
+    }
+
+    /**
+     *
+     * @param index
+     * @param mapping
+     */
+    public void createIndex(String index, String alias, String mapping){
+        log.info("create index " + index + " with mapping " + mapping);
+        CreateIndexRequest request = new CreateIndexRequest(index)
+                .source(mapping, XContentType.JSON);
+        client.indices().createAsync(request, RequestOptions.DEFAULT, new ActionListener<CreateIndexResponse>() {
+
+            @Override
+            public void onResponse(CreateIndexResponse createIndexResponse) {
+                log.info("create index : " + index + " successfully, waiting for all of the nodes  acknowledge the request");
+                createAlias(alias, index);
             }
 
             @Override
@@ -274,17 +285,6 @@ public class Elasticsearch {
         });
     }
 
-    /**
-     *
-     * @param alias
-     * @param index
-     * @param mapping
-     */
-    public void createIndex(String alias, String index, String mapping){
-        createIndex(index, mapping);
-        createIndex(alias, index);
-    }
-
 
     /**
      * delete index
@@ -340,6 +340,7 @@ public class Elasticsearch {
         return result;
 
     }
+
 
     /**
      *

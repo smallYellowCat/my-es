@@ -1,0 +1,8 @@
+grant {
+  
+ 
+	// 表示文件名的时候要用双反斜杠，用-表示该文件夹下所有子目录
+	
+	permission java.io.FilePermission "D:\\Program Files\\Elastics\\Elasticsearch\\-", "read,write";
+	
+};

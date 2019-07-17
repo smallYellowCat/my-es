@@ -8,10 +8,10 @@ import org.springframework.core.io.ClassPathResource;
 @Configuration
 public class Config {
 
-    @Bean(name = "propertiesFactoryBean")
+    @Bean(name = "configProperties")
     public PropertiesFactoryBean properties(){
         PropertiesFactoryBean propertiesFactoryBean = new PropertiesFactoryBean();
-        propertiesFactoryBean.setLocation(new ClassPathResource("classpath:config.properties"));
+        propertiesFactoryBean.setLocation(new ClassPathResource("config.properties"));
         return propertiesFactoryBean;
     }
 }

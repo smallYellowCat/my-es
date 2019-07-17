@@ -7,6 +7,7 @@ import org.springframework.core.io.ClassPathResource;
 import org.springframework.core.io.Resource;
 import org.springframework.core.io.support.PathMatchingResourcePatternResolver;
 import org.springframework.core.io.support.ResourcePatternResolver;
+import org.springframework.stereotype.Component;
 
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -24,6 +25,7 @@ import java.util.Map;
  * @date 2019/7/13 17:44
  * @flag 以万物智能，化百千万亿身
  */
+@Component
 public class Mapping {
 
     private String readContent(Path path) throws IOException {
@@ -47,12 +49,12 @@ public class Mapping {
 
     private void addTypePrefix(Map<String, Object> map){
         String typeName = map.keySet().iterator().next();
-        Map<String, Object> newProperties = addPropertiesPrefix((Map<String, Object>) map.get("properties"), typeName);
+        Map<String, Object> newProperties = addPropertiesPrefix((Map<String, Object>) ((Map)map.get(typeName)).get("properties"), typeName);
         ((Map)map.get(typeName)).put("properties", newProperties);
     }
 
-    private String readMapping() throws IOException {
-        Resource resource = new ClassPathResource("classpath:mapping.txt");
+    public String readMapping() throws IOException {
+        Resource resource = new ClassPathResource("mapping/mapping.txt");
         String str = Resources.toString(resource.getURL(), Charset.defaultCharset());
         Map<String, Object> mapping = parse(str);
 
@@ -68,7 +70,7 @@ public class Mapping {
     }
 
     public String readMapping(String type) throws IOException {
-        Resource res = new ClassPathResource("classpath:mapping/" + type + ".json");
+        Resource res = new ClassPathResource("mapping/" + type + ".json");
         String str = Resources.toString(res.getURL(), Charset.defaultCharset());
         Map<String, Object> mapping = parse(str);
         addTypePrefix(mapping);
