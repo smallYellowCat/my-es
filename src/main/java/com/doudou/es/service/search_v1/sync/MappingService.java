@@ -37,9 +37,10 @@ public class MappingService {
     public void createIndexMapping(){
 
         try {
-            String m = mapping.readMapping();
-            log.info(m);
-            elasticsearch.createIndex(alias, alias + "_" + getDateString(), m);
+            //String m = mapping.readMapping();
+            Map<String, String> indexMapping = mapping.readIndexAndMapping();
+            log.info(JSON.toJSONString(indexMapping));
+            elasticsearch.createIndexMapping(indexMapping);
         } catch (IOException e) {
             e.printStackTrace();
         }

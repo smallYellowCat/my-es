@@ -42,6 +42,8 @@ import javax.annotation.PostConstruct;
 import javax.annotation.PreDestroy;
 import java.io.IOException;
 import java.net.UnknownHostException;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.concurrent.*;
 
@@ -217,7 +219,7 @@ public class Elasticsearch {
      * @param index
      * @param mapping
      */
-    public void createIndex(String index, String alias, String mapping){
+    public void createIndex(String index, String[] alias, String mapping){
         log.info("create index " + index + " with mapping " + mapping);
         CreateIndexRequest request = new CreateIndexRequest(index)
                 .source(mapping, XContentType.JSON);
@@ -234,6 +236,33 @@ public class Elasticsearch {
                 log.error("create index : " + index + " occurred exception " + e, e);
             }
         });
+    }
+
+    /**
+     * 创建index以及mapping
+     * @param alias
+     * @param mapping
+     */
+    public void createIndexMapping(String alias, String mapping) throws IOException {
+        String index = alias + "_" + getDateString();
+        List<String> indices = getIndexByAlias(alias);
+
+        // 创建index
+        createIndex(index, indices.toArray(new String[0]), mapping);
+        // 删除alias下老的index
+        //deleteAlias(alias, indices.toArray(new String[0]));
+        // 增加alias
+        //createAlias(alias, index);
+
+    }
+
+    public void createIndexMapping(Map<String, String> indexMapping) throws IOException {
+        indexMapping.forEach(this::createIndex);
+
+    }
+    private String getDateString() {
+        LocalDateTime time = LocalDateTime.now();
+        return time.format(DateTimeFormatter.ofPattern("yyyMMddHHmmss"));
     }
 
     /**
@@ -267,10 +296,10 @@ public class Elasticsearch {
      * @param alias
      * @param index
      */
-    public void createAlias(String alias, String index){
+    public void createAlias(String[] alias, String index){
         IndicesAliasesRequest request = new IndicesAliasesRequest();
         AliasActions aliasActions = new AliasActions(Type.ADD)
-                .index(index).alias(alias);
+                .index(index).aliases(alias);
         request.addAliasAction(aliasActions);
         indicesClient.updateAliasesAsync(request, RequestOptions.DEFAULT, new ActionListener<AcknowledgedResponse>() {
             @Override

@@ -8,4 +8,5 @@ package com.doudou.es.service.search_v1.common;
 public interface EntityForSearch {
 
     int getId();
+    //String getIndex();
 }

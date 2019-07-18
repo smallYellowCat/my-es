@@ -3,21 +3,28 @@ package com.doudou.es.service.search_v1;
 import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.TypeReference;
 import com.doudou.es.service.search_v1.common.EntityForSearch;
+import com.doudou.es.service.search_v1.common.SearchDate;
 import com.doudou.es.service.search_v1.elasticsearch.Document;
 import com.doudou.es.service.search_v1.elasticsearch.Elasticsearch;
 import com.doudou.es.service.search_v1.elasticsearch.Query;
 import com.doudou.es.service.search_v1.elasticsearch.SearchResult;
+import com.doudou.es.util.StringParse;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
 import org.elasticsearch.action.search.SearchRequest;
+import org.elasticsearch.index.fielddata.FieldData;
+import org.elasticsearch.index.query.BoolQueryBuilder;
 import org.elasticsearch.index.query.QueryBuilder;
+import org.elasticsearch.index.query.QueryBuilders;
+import org.elasticsearch.index.query.RangeQueryBuilder;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 
 import java.io.IOException;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.io.UnsupportedEncodingException;
+import java.math.BigDecimal;
+import java.util.*;
 
 /**
  * @author 豆豆
@@ -30,13 +37,14 @@ public abstract class AbstractSearchService {
     @Autowired
     Elasticsearch elasticsearch;
 
-    @Value("#{configProperties['elasticsearch.index']}")
+    @Getter
     String index;
     @Getter
     String type;
 
-    public AbstractSearchService(String type){
+    public AbstractSearchService(String index, String type){
         this.type = type;
+        this.index =index;
     }
 
     /**
@@ -115,6 +123,92 @@ public abstract class AbstractSearchService {
                 map
         );
         return document;
+    }
+
+    public Map<String, Class> buildFields(int fieldType, LinkedHashMap<String, Class> fieldMap){
+        if (0 == fieldType){
+            return fieldMap;
+        }
+
+        int i = 1;
+        Map<String, Class> result = new HashMap<>();
+        for (Map.Entry<String, Class> entry : fieldMap.entrySet()){
+            if (i == fieldType){
+                result.put(entry.getKey(), entry.getValue());
+            }
+            i++;
+        }
+
+        return result;
+    }
+
+    /**
+     *
+     * @param fieldType
+     * @param fieldValue
+     * @param boolQueryBuilder
+     * @param fieldMap
+     */
+    public void buildFieldQuery(Integer fieldType, String fieldValue, BoolQueryBuilder boolQueryBuilder, Map<String, Class> fieldMap){
+        if (fieldType != null && !StringUtils.isEmpty(fieldValue)){
+            BoolQueryBuilder fieldBoolQuery = QueryBuilders.boolQuery();
+            fieldValue = StringParse.convertParam(fieldValue);
+            log.debug("fieldValue : " + fieldValue);
+            String finalFieldValue = fieldValue;
+            fieldMap.forEach((k, v) -> {
+                if (v == Integer.class && StringUtils.isNumeric(finalFieldValue)){
+                    if (!(new BigDecimal(finalFieldValue).compareTo(BigDecimal.valueOf(Integer.MAX_VALUE)) > 0)){
+                        log.debug(type + "_" + k + " " + finalFieldValue);
+                        QueryBuilder columnQuery = QueryBuilders.matchQuery(type + "_" + k, finalFieldValue);
+                        fieldBoolQuery.should(columnQuery);
+                    }
+                }
+            });
+            boolQueryBuilder.must(fieldBoolQuery);
+        }
+
+    }
+
+    public void buildTermQuery(String key, Object value, BoolQueryBuilder boolQueryBuilder, BoolQueryType boolQueryType){
+        //no need to check null
+        if (value instanceof String){
+            String fieldValue = (String) value;
+            value = StringParse.convertParam(fieldValue);
+            log.debug(key + " : " + value);
+            log.debug("type " + type);
+            QueryBuilder termquery = QueryBuilders.termQuery(type + "_" + key, value);
+            buildQuery(boolQueryBuilder, termquery, boolQueryType);
+
+        }
+    }
+
+    public void buildPrefixQuery(String key, String value, BoolQueryBuilder boolQueryBuilder, BoolQueryType boolQueryType){
+        log.debug(key + " : " + value);
+        log.debug("type " + type);
+        QueryBuilder prefixQuery = QueryBuilders.prefixQuery(type + "_" + key, value);
+        buildQuery(boolQueryBuilder, prefixQuery, boolQueryType);
+
+    }
+
+
+
+    private void buildQuery(BoolQueryBuilder boolQueryBuilder, QueryBuilder query, BoolQueryType boolQueryType){
+        switch (boolQueryType){
+            case must:
+                boolQueryBuilder.must(query);
+                break;
+            case filter:
+                boolQueryBuilder.filter(query);
+                break;
+            case should:
+                boolQueryBuilder.should(query);
+                break;
+            case mustnot:
+                boolQueryBuilder.mustNot(query);
+                break;
+            default:
+                break;
+        }
     }
 
     /**

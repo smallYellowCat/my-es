@@ -1,0 +1,21 @@
+{
+  "book":{
+    "_all": {
+      "analyzer": "ik_max_word",
+      "search_analyzer": "ik_max_word",
+      "store": "false",
+      "term_vector": "no"
+    },
+    "properties": {
+      "id": {
+        "type": "integer"
+      },
+      "bookName": {
+        "type": "text"
+      },
+      "author": {
+        "type": "text"
+      }
+    }
+  }
+}

@@ -16,6 +16,7 @@ import java.io.InputStreamReader;
 import java.nio.charset.Charset;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -64,6 +65,7 @@ public class Mapping {
             String s = Resources.toString(res.getURL(), Charset.defaultCharset());
             Map<String, Object> m = parse(s);
             addTypePrefix(m);
+            //noinspection unchecked
             ((Map<String, Object>)mapping.get("mappings")).putAll(m);
         }
         return JSON.toJSONString(mapping);
@@ -75,5 +77,31 @@ public class Mapping {
         Map<String, Object> mapping = parse(str);
         addTypePrefix(mapping);
         return JSON.toJSONString(mapping);
+    }
+
+    /**
+     *
+     * @return
+     * @throws IOException
+     */
+    public Map<String, String> readIndexAndMapping() throws IOException {
+        Resource resource = new ClassPathResource("mapping/mapping.txt");
+        String str = Resources.toString(resource.getURL(), Charset.defaultCharset());
+
+
+        ResourcePatternResolver patternResolver = new PathMatchingResourcePatternResolver();
+        Resource[] mappingLocations = patternResolver.getResources("mapping/*.json");
+
+        Map<String, String> index = new HashMap<>();
+        for (Resource res : mappingLocations ){
+            Map<String, Object> mapping = parse(str);
+            String s = Resources.toString(res.getURL(), Charset.defaultCharset());
+            String name = res.getFilename().substring(0, res.getFilename().length() - 5).toLowerCase();
+            Map<String, Object> m = parse(s);
+            //noinspection unchecked
+            ((Map<String, Object>)mapping.get("mappings")).putAll(m);
+            index.put(name, JSON.toJSONString(mapping));
+        }
+        return index;
     }
 }
